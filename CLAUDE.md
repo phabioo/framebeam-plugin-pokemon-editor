@@ -2,13 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-framebeam-plugin-pokemon-editor is a separate editor plugin built on `framebeam-plugin-pokemon-core`. It edits team and box Pokémon (species, level, nature, IVs/EVs, moves, shiny), items and money in running games by writing emulator memory, including re-encryption and checksum for the game's data format.
+uzume-plugin-pokemon-editor is a separate editor plugin built on `uzume-plugin-soullink-core`. It edits team and box Pokémon (species, level, nature, IVs/EVs, moves, shiny), items and money in running games by writing emulator memory, including re-encryption and checksum for the game's data format.
 
-## Relation to FrameBeam
+## Relation to Uzume
 
-- Plugin for [FrameBeam](https://github.com/phabioo/framebeam) (self-hosted retro gaming platform). Interface: `docs/architecture/12-plugins.md` in the FrameBeam repository.
-- Plugin API v1 is planned (FrameBeam 0.11) and not implemented yet; everything here is design until it exists. Open API items are marked open, never invented.
-- Runtime: Lua 5.4 in the FrameBeam sandbox; UI only as declarative building blocks (no QML).
+- Plugin for [Uzume](https://github.com/phabioo/uzume) (self-hosted retro gaming platform). Interface: `docs/architecture/12-plugins.md` and `docs/guides/plugin-api.md` in the Uzume repository.
+- Plugin API v1 ships with Uzume since 0.11; the `memory.write` permission it needs is planned in Uzume 0.20 and not built yet, so everything here is design until it exists. Open API items are marked open, never invented.
+- Runtime: Lua 5.4 in the Uzume sandbox; UI only as declarative building blocks (no QML).
 
 ## Working rules
 
@@ -39,4 +39,4 @@ framebeam-plugin-pokemon-editor is a separate editor plugin built on `framebeam-
 ## Pointers
 
 - Plan and status: `docs/roadmap.md`. Workflow, roles and brief template: `docs/workflow.md`.
-- FrameBeam docs: https://github.com/phabioo/framebeam (`docs/architecture/12-plugins.md`, `docs/adr/0023-plugins.md`).
+- Uzume docs: https://github.com/phabioo/uzume (`docs/roadmap.md` section 0.20, `docs/guides/plugin-api.md`, `docs/architecture/12-plugins.md`, `docs/adr/0023-plugins.md`).
