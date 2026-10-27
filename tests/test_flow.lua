@@ -1,0 +1,347 @@
+local t = require("t")
+local fb_mock = require("fb_mock")
+local fake_core = require("fake_core")
+
+local CHECK_TICKS = 5 * 12 + 5
+
+local function start(o)
+  o = o or {}
+  local core = fake_core.new(o.world)
+  local mock = fb_mock.new{ language = o.language, core = (not o.no_core) and core.provider or nil, no_write = o.no_write,
+    write_policy = o.policy, on_write = core.commit }
+  package.loaded["app.editor"] = nil
+  local ed = require("app.editor").start(mock.fb)
+  return mock, core, ed
+end
+
+local function texts(mock) return mock.texts() end
+
+local function select_options(mock, id) return mock.find(id).options end
+
+t.case("ready: panel lists the team, validates, selects Team", function()
+  local m = start()
+  local tree = m.ui.trees.panel
+  t.ok(tree)
+  t.eq(m.find("tabs").selected, "team")
+  t.eq(#m.find("list").rows, 2)
+  t.eq(m.find("list").rows[1].title, "Zap · Lv 20")
+  t.eq(m.find("list").rows[1].sub, "Sp25")
+  t.eq(m.find("list").rows[2].title, "Sp7 · Lv 20")
+  t.eq(m.find("list").rows[1].value, { kind = "team", slot = 1 })
+  t.eq(m.logs[1].text, "Creature Editor 0.1.0 loaded.")
+end)
+
+t.case("gates", function()
+  local m = start{ no_core = true }
+  t.eq(m.find("gate").title, m.strings.gate_core_title); t.eq(m.find("gate").tone, "danger")
+  m = start{ world = { supported = false } }
+  t.eq(m.find("gate").title, m.strings.gate_game_title)
+  m = start{ world = { edit = false } }
+  t.eq(m.find("gate").title, m.strings.gate_game_title)
+  m = start{ no_write = true }
+  t.eq(m.find("gate").title, m.strings.gate_write_title)
+  t.eq(#m.writes, 0)
+end)
+
+t.case("the core appearing later is picked up on a retry tick", function()
+  local m, core = start{ no_core = true }
+  t.ok(m.find("gate"))
+  m.set_provider("pokemon.core", core.provider)
+  m.tick(30)
+  t.eq(m.find("gate"), nil)
+  t.eq(#m.find("list").rows, 2)
+end)
+
+t.case("names that are not ready yet are loaded later", function()
+  local m, core = start{ world = { names_ready = false } }
+  m.action("edit", { kind = "team", slot = 1 })
+  t.eq(#select_options(m, "species"), 1) -- only the current entry
+  core.world.names_ready = true
+  m.tick(30)
+  t.eq(#select_options(m, "species"), 100)
+end)
+
+t.case("boxes: pick a box and edit a creature of it", function()
+  local m, core = start()
+  m.action("tab", "box")
+  t.eq(m.find("box-select").selected, 1)
+  t.eq(#m.find("list").rows, 2)
+  t.eq(m.find("list").rows[2].value, { kind = "box", box = 1, slot = 4 })
+  m.action("box_select", 2)
+  t.eq(m.find("list"), nil)
+  t.ok(texts(m):find(m.strings.box_empty, 1, true))
+  m.action("box_select", 1)
+  m.action("edit", { kind = "box", box = 1, slot = 4 })
+  t.eq(m.find("e-title").text, "Sp150 · Lv 20")
+  m.action("level", "50")
+  m.action("apply")
+  t.eq(#m.writes, 1)
+  t.eq(m.writes[1].addr, 0x100000 + (1 * 30 + 4) * 0x100)
+  m.tick(5)
+  t.eq(core.world.boxes[1][2].level, 50)
+  t.eq(m.find("msg-badge").tone, "ok")
+  t.eq(m.find("msg-text").text, m.strings.msg_applied)
+end)
+
+t.case("edit a team creature: form values, apply, write, read-back confirmation", function()
+  local m, core = start()
+  m.action("edit", { kind = "team", slot = 2 })
+  t.eq(m.find("level").text, "20"); t.eq(m.find("level").live, true)
+  t.eq(m.find("nature").selected, 3); t.eq(#m.find("nature").options, 25)
+  t.eq(m.find("nature").options[1].label, "Nat0")
+  t.eq(m.find("move1").selected, 33); t.eq(m.find("move3").selected, 0); t.eq(m.find("move3").options[1].label, m.strings.none)
+  t.eq(m.find("iv_hp").text, "10")
+  t.eq(m.find("ev-total").text, "EVs 0 / 510")
+  m.action("species", 9)
+  m.action("level", "40")
+  m.action("nature", 12)
+  m.action("shiny", true)
+  m.action("item", 17)
+  m.action("move_3", 55)
+  m.action("iv_atk", "31")
+  m.action("ev_spa", "252")
+  t.eq(m.find("ev-total").text, "EVs 252 / 510")
+  m.action("apply")
+  t.eq(#m.writes, 1)
+  t.eq(m.writes[1].addr, 0x1000 + 2 * 0x200)
+  t.eq(m.find("msg-text").text, m.strings.msg_sent)
+  m.tick(5)
+  local r = core.world.team[2]
+  t.eq({ r.species, r.level, r.nature, r.shiny, r.held_item, r.ivs.atk, r.evs.spa }, { 9, 40, 12, true, 17, 31, 252 })
+  t.eq(r.moves, { 33, 45, 55 })
+  t.eq(m.find("msg-badge").tone, "ok"); t.eq(m.find("msg-text").text, m.strings.msg_applied)
+  -- the form follows the new state: a second Apply has nothing to send
+  m.action("apply")
+  t.eq(#m.writes, 1)
+  t.eq(m.find("msg-text").text, m.strings.msg_nothing)
+end)
+
+t.case("species filter narrows the list but keeps the current species", function()
+  local m = start()
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("species_filter", "sp72")
+  local opts = select_options(m, "species")
+  t.eq(opts[1], { value = 25, label = "Sp25" })
+  t.eq(#opts, 4) -- the current Sp25, then Sp72, Sp720, Sp721
+end)
+
+t.case("every select stays within 100 options", function()
+  local m = start()
+  m.action("edit", { kind = "team", slot = 1 })
+  for _, id in ipairs({ "species", "move1", "move4", "item", "nature" }) do
+    t.ok(#select_options(m, id) <= 100, id)
+  end
+  t.eq(#select_options(m, "move2"), 100)
+end)
+
+t.case("invalid input blocks Apply and marks the field", function()
+  local m = start()
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("level", "0")
+  t.eq(m.find("level").error, m.strings.err_level)
+  m.action("apply")
+  t.eq(#m.writes, 0)
+  t.eq(m.find("msg-text").text, m.strings.msg_fix_fields)
+  m.action("level", "20")
+  t.eq(m.find("level").error, nil)
+  m.action("ev_hp", "255"); m.action("ev_atk", "255"); m.action("ev_def", "1")
+  t.eq(m.find("ev-err").text, m.strings.err_ev_total)
+  t.eq(m.find("ev-total").tone, "danger")
+  m.action("apply")
+  t.eq(#m.writes, 0)
+  m.action("reset")
+  t.eq(m.find("ev_hp").text, "0")
+  t.eq(m.find("msg"), nil)
+  m.action("iv_hp", "40")
+  t.eq(m.find("iv_hp").error, m.strings.err_iv)
+  m.action("move_1", 0); m.action("move_2", 0)
+  t.eq(m.find("moves-err").text, m.strings.err_moves)
+end)
+
+t.case("nothing changed", function()
+  local m = start()
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("apply")
+  t.eq(#m.writes, 0)
+  t.eq(m.find("msg-text").text, m.strings.msg_nothing)
+  m.action("dismiss")
+  t.eq(m.find("msg"), nil)
+end)
+
+t.case("consent_required: clear message, nothing pending, second try works", function()
+  local allow = false
+  local m, core = start{ policy = function() if allow then return true end return nil, "consent_required" end }
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("level", "30")
+  m.action("apply")
+  t.eq(m.find("msg-badge").tone, "danger")
+  t.eq(m.find("msg-text").text, m.strings.msg_consent)
+  m.tick(CHECK_TICKS)
+  t.eq(core.world.team[1].level, 20)
+  allow = true
+  m.action("apply")
+  m.tick(5)
+  t.eq(core.world.team[1].level, 30)
+  t.eq(m.find("msg-text").text, m.strings.msg_applied)
+end)
+
+t.case("blocked_by_run_rule and unmapped", function()
+  local reason = "blocked_by_run_rule"
+  local m, core = start{ policy = function() return nil, reason end }
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("level", "30")
+  m.action("apply")
+  t.eq(m.find("msg-text").text, m.strings.msg_blocked)
+  reason = "unmapped"
+  m.action("apply")
+  t.eq(m.find("msg-text").text, m.strings.msg_unmapped)
+  reason = "weird<>reason!"
+  m.action("apply")
+  t.eq(m.find("msg-text").text, "The game memory could not be changed (weirdreason).")
+  m.tick(CHECK_TICKS)
+  t.eq(core.world.team[1].level, 20)
+end)
+
+t.case("second op fails: partial write is reported", function()
+  local n = 0
+  local m = start{ world = { two_ops = true }, policy = function() n = n + 1; if n == 2 then return nil, "unmapped" end return true end }
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("level", "30")
+  m.action("apply")
+  t.eq(#m.writes, 2)
+  t.eq(m.find("msg-text").text, m.strings.msg_unmapped .. " " .. m.strings.msg_partial)
+  t.eq(m.find("msg-badge").tone, "danger")
+end)
+
+t.case("two ops are written in order", function()
+  local m = start{ world = { two_ops = true } }
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("level", "30")
+  m.action("apply")
+  t.eq({ m.writes[1].addr, m.writes[2].addr }, { 0x1000 + 0x200, 0x1000 + 0x200 + 0x158 })
+  t.eq(m.writes[2].bytes, "EXT")
+end)
+
+t.case("core errors from encode_pokemon", function()
+  local m, core = start()
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("level", "30")
+  for code, key in pairs({ growth_unavailable = "err_growth", empty_slot = "err_empty_slot", not_ready = "err_core_not_ready",
+    unsupported = "err_unsupported" }) do
+    core.world.encode_error = code
+    m.action("apply")
+    t.eq(m.find("msg-text").text, m.strings[key], code)
+  end
+  core.world.encode_error = "invalid_nature"
+  m.action("apply")
+  t.eq(m.find("msg-text").text, "The value for nature is not valid.")
+  core.world.encode_error = "weird"
+  m.action("apply")
+  t.eq(m.find("msg-text").text, "The core could not prepare the change (weird).")
+  t.eq(#m.writes, 0)
+end)
+
+t.case("the slot vanished before Apply", function()
+  local m, core = start()
+  m.action("edit", { kind = "team", slot = 1 })
+  core.world.team = { core.world.team[2] }
+  m.action("level", "30")
+  m.action("apply")
+  t.eq(m.find("msg-text").text, m.strings.err_empty_slot)
+  m.action("back")
+  m.action("edit", { kind = "team", slot = 1 })
+  t.eq(m.find("tabs").selected, "team") -- back in the list; the slot is gone, the form did not open
+end)
+
+t.case("unconfirmed write after the read-back window", function()
+  local m, core = start{ world = { hold = true } }
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("level", "30")
+  m.action("apply")
+  m.tick(CHECK_TICKS)
+  t.eq(m.find("msg-badge").tone, "warning")
+  t.eq(m.find("msg-text").text, m.strings.msg_unconfirmed)
+  t.eq(core.world.team[1].level, 20)
+end)
+
+t.case("Apply twice while a write is pending sends once", function()
+  local m = start()
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("level", "30")
+  m.action("apply"); m.action("apply")
+  t.eq(#m.writes, 1)
+end)
+
+t.case("warnings of the core are shown with the result", function()
+  local m = start{ world = { warnings = { "pp_unknown", "ability_unchanged", "other" } } }
+  m.action("edit", { kind = "team", slot = 1 })
+  m.action("species", 9)
+  m.action("apply")
+  m.tick(5)
+  t.eq(m.find("msg-text").text, m.strings.msg_applied .. " " .. m.strings.warn_pp .. " " .. m.strings.warn_ability)
+end)
+
+t.case("money", function()
+  local m, core = start()
+  m.action("tab", "bag")
+  t.ok(texts(m):find("Current money: 5000", 1, true))
+  t.ok(texts(m):find(m.strings.items_unsupported, 1, true))
+  m.action("money_input", "1234567")
+  m.action("money_apply")
+  t.eq(m.find("money-input").error, m.strings.err_money)
+  t.eq(#m.writes, 0)
+  m.action("money_input", "abc")
+  m.action("money_apply")
+  t.eq(m.find("money-input").error, m.strings.err_money)
+  m.action("money_input", "99999")
+  t.eq(m.find("money-input").error, nil)
+  m.action("money_apply")
+  t.eq(m.writes[1], { addr = 0x9000, bytes = string.pack("<I4", 99999), ok = true })
+  m.tick(5)
+  t.eq(core.world.money, 99999)
+  t.eq(m.find("msg-text").text, "Money set to 99999.")
+end)
+
+t.case("money write refused by the run rule", function()
+  local m = start{ policy = function() return nil, "blocked_by_run_rule" end }
+  m.action("tab", "bag")
+  m.action("money_input", "10")
+  m.action("money_apply")
+  t.eq(m.find("msg-text").text, m.strings.msg_blocked)
+end)
+
+t.case("team.changed refreshes the list, not an open form", function()
+  local m, core = start()
+  core.world.team[1].level = 55
+  m.fire_event("uzume.soullink-core", "team.changed", {})
+  t.eq(m.find("list").rows[1].title, "Zap · Lv 55")
+  m.action("edit", { kind = "team", slot = 1 })
+  core.world.team[1].level = 60
+  m.fire_event("uzume.soullink-core", "team.changed", {})
+  t.eq(m.find("level").text, "55")
+end)
+
+t.case("German", function()
+  local m = start{ language = "de" }
+  t.eq(m.logs[1].text, "Kreatureneditor 0.1.0 geladen.")
+  t.eq(m.find("tabs").options[2].label, "Boxen")
+  m.action("edit", { kind = "team", slot = 1 })
+  t.ok(texts(m):find("Attacken", 1, true))
+end)
+
+t.case("a throwing action is logged and shown, the panel stays alive", function()
+  local m, core = start()
+  m.action("edit", { kind = "team", slot = 1 })
+  core.provider.encode_pokemon = function() error("boom") end
+  m.action("level", "30")
+  m.action("apply")
+  t.eq(m.find("msg-text").text, "The core could not prepare the change (call_failed).")
+end)
+
+t.case("actions of other slots are ignored", function()
+  local m = start()
+  m.action("tab", "box", "toast")
+  t.eq(m.find("tabs").selected, "team")
+  m.action("nonsense", 1)
+  t.ok(m.ui.trees.panel)
+end)

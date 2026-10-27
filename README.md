@@ -2,9 +2,9 @@
 
 Pokémon editor for Uzume: edit team, box, items and money through memory writes.
 
-Status: **planned, nothing implemented.**
+Status: **v0.1.0: team and box creatures (species, level, nature, IVs/EVs, moves, shiny, held item) and money for Omega Ruby / Alpha Sapphire; items follow when the core knows the bag; not yet tested on a real game.**
 
-Requires Uzume 0.20 (`memory.write` in the plugin API, planned; [Uzume roadmap](https://github.com/phabioo/uzume/blob/main/docs/roadmap.md)) and [uzume-plugin-soullink-core](https://github.com/phabioo/uzume-plugin-soullink-core). Part of [Uzume](https://github.com/phabioo/uzume); plugin API: `docs/guides/plugin-api.md` there. Plan: [docs/roadmap.md](docs/roadmap.md).
+Requires Uzume 0.20 (`memory.write` in the plugin API; [Uzume roadmap](https://github.com/phabioo/uzume/blob/main/docs/roadmap.md)) and [uzume-plugin-soullink-core](https://github.com/phabioo/uzume-plugin-soullink-core). Part of [Uzume](https://github.com/phabioo/uzume); plugin API: `docs/guides/plugin-api.md` there. Plan: [docs/roadmap.md](docs/roadmap.md).
 
 Every PR description needs a `## Changelog` section (see `.github/pull_request_template.md`); CI checks it with `tools/changelog.py`, and releases should build their notes from these sections.
 
