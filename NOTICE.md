@@ -1,8 +1,8 @@
 # Notice
 
-uzume-plugin-pokemon-editor (plugin for Uzume)
+uzume-plugin-monster-editor (plugin for Uzume)
 
-Copyright (C) 2026 Fabio and uzume-plugin-pokemon-editor contributors
+Copyright (C) 2026 Fabio and uzume-plugin-monster-editor contributors
 
 SPDX-License-Identifier: GPL-3.0-or-later
 

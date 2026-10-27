@@ -51,7 +51,7 @@ end)
 t.case("manifest", function()
   local s = read("plugin/manifest.json")
   for _, needle in ipairs({
-    '"id": "uzume.pokemon-editor"', '"name": "Creature Editor"', '"version": "0.1.0"', '"api": 1',
+    '"id": "uzume.monster-editor"', '"name": "Creature Editor"', '"version": "0.1.0"', '"api": 1',
     '"uzume.soullink-core": ">=0.5.0"', '"000400000011C400"', '"000400000011C500"',
     '"permissions": [', '"memory.write"', '"entry": "main.lua"', '"min_player": "0.20.0"', '"title": "Editor"',
   }) do
