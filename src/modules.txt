@@ -1,0 +1,5 @@
+# Modules bundled into plugin/main.lua (see tools/bundle.lua)
+app.editor
+main
+model.form
+ui.panel

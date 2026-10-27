@@ -7,7 +7,7 @@ uzume-plugin-pokemon-editor is a separate editor plugin built on `uzume-plugin-s
 ## Relation to Uzume
 
 - Plugin for [Uzume](https://github.com/phabioo/uzume) (self-hosted retro gaming platform). Interface: `docs/architecture/12-plugins.md` and `docs/guides/plugin-api.md` in the Uzume repository.
-- Plugin API v1 ships with Uzume since 0.11; the `memory.write` permission it needs is planned in Uzume 0.20 and not built yet, so everything here is design until it exists. Open API items are marked open, never invented.
+- Plugin API v1 ships with Uzume since 0.11; the `memory.write` permission it needs ships with Uzume 0.20 (contract: `fb.memory.write(addr, bytes)` answers `true` or `nil, "consent_required" | "blocked_by_run_rule" | "unmapped"`; the app asks for consent per game, takes the snapshot "Before memory changes" and writes the run log). Open API items are marked open, never invented.
 - Runtime: Lua 5.4 in the Uzume sandbox; UI only as declarative building blocks (no QML).
 
 ## Working rules
@@ -33,7 +33,8 @@ uzume-plugin-pokemon-editor is a separate editor plugin built on `uzume-plugin-s
 
 ## Status and commands
 
-- Status: no code yet. Commands (test, lint, package) will be added here when they exist; list only commands that have been run.
+- Status: v0.1.0 (Creature Editor: in-game panel tab "Editor" with team list, box picker, edit form per creature, money; items open; writes through `fb.memory.write`, the encoding comes from `uzume-plugin-soullink-core` >= 0.5.0 `encode_pokemon` / `encode_money`; real-game behaviour untested). Layout: `docs/architecture.md`.
+- Sources are modules in `src/`; `lua5.4 tools/bundle.lua` generates the committed `plugin/main.lua` (list new modules in `src/modules.txt`; `--check` fails when stale). Tests: `lua5.4 tests/run.lua` (fake `fb` with `fb.memory.write`, UI validator and a fake `pokemon.core`). Package: `python3 -I tools/package.py --out DIR` (`--verify FILE`); a tag `vX.Y.Z` builds the `.fbplugin` release asset (`.github/workflows/release.yml`).
 - The SessionStart hook `.claude/hooks/session-start.sh` only prepares cloud sessions (installs `lua5.4` via apt if missing).
 
 ## Pointers
