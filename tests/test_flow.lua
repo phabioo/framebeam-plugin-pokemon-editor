@@ -1,5 +1,5 @@
 local t = require("t")
-local fb_mock = require("fb_mock")
+local uz_mock = require("uz_mock")
 local fake_core = require("fake_core")
 
 local CHECK_TICKS = 5 * 12 + 5
@@ -7,10 +7,10 @@ local CHECK_TICKS = 5 * 12 + 5
 local function start(o)
   o = o or {}
   local core = fake_core.new(o.world)
-  local mock = fb_mock.new{ language = o.language, core = (not o.no_core) and core.provider or nil, no_write = o.no_write,
+  local mock = uz_mock.new{ language = o.language, core = (not o.no_core) and core.provider or nil, no_write = o.no_write,
     write_policy = o.policy, on_write = core.commit }
   package.loaded["app.editor"] = nil
-  local ed = require("app.editor").start(mock.fb)
+  local ed = require("app.editor").start(mock.uz)
   return mock, core, ed
 end
 
@@ -28,7 +28,7 @@ t.case("ready: panel lists the team, validates, selects Team", function()
   t.eq(m.find("list").rows[1].sub, "Sp25")
   t.eq(m.find("list").rows[2].title, "Sp7 · Lv 20")
   t.eq(m.find("list").rows[1].value, { kind = "team", slot = 1 })
-  t.eq(m.logs[1].text, "Creature Editor 0.1.0 loaded.")
+  t.eq(m.logs[1].text, "Creature Editor 0.1.1 loaded.")
 end)
 
 t.case("gates", function()
@@ -323,7 +323,7 @@ end)
 
 t.case("German", function()
   local m = start{ language = "de" }
-  t.eq(m.logs[1].text, "Kreatureneditor 0.1.0 geladen.")
+  t.eq(m.logs[1].text, "Kreatureneditor 0.1.1 geladen.")
   t.eq(m.find("tabs").options[2].label, "Boxen")
   m.action("edit", { kind = "team", slot = 1 })
   t.ok(texts(m):find("Attacken", 1, true))

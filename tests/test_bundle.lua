@@ -1,5 +1,5 @@
 local t = require("t")
-local mock = require("fb_mock")
+local mock = require("uz_mock")
 local fake_core = require("fake_core")
 
 local function read(path)
@@ -17,10 +17,10 @@ t.case("plugin/main.lua is up to date", function()
 end)
 
 -- Run plugin/main.lua in a sandbox like the app: no require/load/io/os.
-t.case("bundled plugin runs in a sandbox and draws the panel", function()
+t.case("older app with only the global fb still starts", function()
   local core = fake_core.new()
   local m = mock.new({ language = "de", core = core.provider, on_write = core.commit })
-  local env = { fb = m.fb }
+  local env = { fb = m.uz }
   for _, n in ipairs({ "assert", "error", "getmetatable", "ipairs", "next", "pairs", "pcall", "select",
     "setmetatable", "tonumber", "tostring", "type", "xpcall", "rawequal", "rawget", "rawlen", "rawset",
     "string", "table", "math", "utf8", "coroutine" }) do
@@ -28,7 +28,22 @@ t.case("bundled plugin runs in a sandbox and draws the panel", function()
   end
   local chunk = assert(loadfile("plugin/main.lua", "t", env))
   chunk()
-  t.eq(m.logs[1].text, "Kreatureneditor 0.1.0 geladen.")
+  t.eq(m.logs[1].text, "Kreatureneditor 0.1.1 geladen.")
+  t.ok(m.ui.trees.panel)
+end)
+
+t.case("bundled plugin runs in a sandbox and draws the panel", function()
+  local core = fake_core.new()
+  local m = mock.new({ language = "de", core = core.provider, on_write = core.commit })
+  local env = { uz = m.uz }
+  for _, n in ipairs({ "assert", "error", "getmetatable", "ipairs", "next", "pairs", "pcall", "select",
+    "setmetatable", "tonumber", "tostring", "type", "xpcall", "rawequal", "rawget", "rawlen", "rawset",
+    "string", "table", "math", "utf8", "coroutine" }) do
+    env[n] = _G[n]
+  end
+  local chunk = assert(loadfile("plugin/main.lua", "t", env))
+  chunk()
+  t.eq(m.logs[1].text, "Kreatureneditor 0.1.1 geladen.")
   t.ok(m.ui.trees.panel)
   m.action("edit", { kind = "team", slot = 1 })
   m.action("level", "33")
@@ -51,7 +66,7 @@ end)
 t.case("manifest", function()
   local s = read("plugin/manifest.json")
   for _, needle in ipairs({
-    '"id": "uzume.monster-editor"', '"name": "Creature Editor"', '"version": "0.1.0"', '"api": 1',
+    '"id": "uzume.monster-editor"', '"name": "Creature Editor"', '"version": "0.1.1"', '"api": 1',
     '"uzume.soullink-core": ">=0.5.0"', '"000400000011C400"', '"000400000011C500"',
     '"permissions": [', '"memory.write"', '"entry": "main.lua"', '"min_player": "0.20.0"', '"title": "Editor"',
   }) do

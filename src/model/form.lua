@@ -1,6 +1,6 @@
 -- Edit form of one creature: record -> form values (strings as typed), form -> changed fields for
 -- pokemon.core `encode_pokemon`, and the checks that run before anything is encoded.
--- Pure: no fb access.
+-- Pure: no uz access.
 local M = {}
 
 M.STATS = { "hp", "atk", "def", "spe", "spa", "spd" }
