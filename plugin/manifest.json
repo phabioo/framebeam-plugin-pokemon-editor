@@ -1,8 +1,9 @@
 {
   "id": "uzume.creature-editor",
   "name": "Creature Editor",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "issues_url": "https://github.com/phabioo/uzume-plugin-creature-editor",
+  "replaces": ["uzume.monster-editor"],
   "api": 1,
   "type": "script",
   "min_player": "0.20.0",
