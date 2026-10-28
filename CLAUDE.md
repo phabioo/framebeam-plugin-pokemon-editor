@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-uzume-plugin-monster-editor is a separate editor plugin built on `uzume-plugin-soullink-core`. It edits team and box Pokémon (species, level, nature, IVs/EVs, moves, shiny), items and money in running games by writing emulator memory, including re-encryption and checksum for the game's data format.
+uzume-plugin-creature-editor is a separate editor plugin built on `uzume-plugin-soullink-core`. It edits team and box Pokémon (species, level, nature, IVs/EVs, moves, shiny), items and money in running games by writing emulator memory, including re-encryption and checksum for the game's data format.
 
 ## Relation to Uzume
 
@@ -33,7 +33,7 @@ uzume-plugin-monster-editor is a separate editor plugin built on `uzume-plugin-s
 
 ## Status and commands
 
-- Status: v0.1.1 (API namespace `uz`, falls back to `fb` on older apps); v0.1.0 (Creature Editor: in-game panel tab "Editor" with team list, box picker, edit form per creature, money; items open; writes through `uz.memory.write`, the encoding comes from `uzume-plugin-soullink-core` >= 0.5.0 `encode_pokemon` / `encode_money`; real-game behaviour untested). Layout: `docs/architecture.md`.
+- Status: v0.2.0 (plugin id `uzume.creature-editor`, repository uzume-plugin-creature-editor; was `uzume.monster-editor`); v0.1.1 (API namespace `uz`, falls back to `fb` on older apps); v0.1.0 (Creature Editor: in-game panel tab "Editor" with team list, box picker, edit form per creature, money; items open; writes through `uz.memory.write`, the encoding comes from `uzume-plugin-soullink-core` >= 0.5.0 `encode_pokemon` / `encode_money`; real-game behaviour untested). Layout: `docs/architecture.md`.
 - Sources are modules in `src/`; `lua5.4 tools/bundle.lua` generates the committed `plugin/main.lua` (list new modules in `src/modules.txt`; `--check` fails when stale). Tests: `lua5.4 tests/run.lua` (fake `uz` with `uz.memory.write`, UI validator and a fake `pokemon.core`). Package: `python3 -I tools/package.py --out DIR` (`--verify FILE`); a tag `vX.Y.Z` builds the `.uzplugin` release asset (`.github/workflows/release.yml`).
 - The SessionStart hook `.claude/hooks/session-start.sh` only prepares cloud sessions (installs `lua5.4` via apt if missing).
 
