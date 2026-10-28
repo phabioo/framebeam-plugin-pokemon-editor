@@ -28,7 +28,7 @@ t.case("ready: panel lists the team, validates, selects Team", function()
   t.eq(m.find("list").rows[1].sub, "Sp25")
   t.eq(m.find("list").rows[2].title, "Sp7 · Lv 20")
   t.eq(m.find("list").rows[1].value, { kind = "team", slot = 1 })
-  t.eq(m.logs[1].text, "Creature Editor 0.1.1 loaded.")
+  t.eq(m.logs[1].text, "Creature Editor 0.2.0 loaded.")
 end)
 
 t.case("gates", function()
@@ -323,7 +323,7 @@ end)
 
 t.case("German", function()
   local m = start{ language = "de" }
-  t.eq(m.logs[1].text, "Kreatureneditor 0.1.1 geladen.")
+  t.eq(m.logs[1].text, "Kreatureneditor 0.2.0 geladen.")
   t.eq(m.find("tabs").options[2].label, "Boxen")
   m.action("edit", { kind = "team", slot = 1 })
   t.ok(texts(m):find("Attacken", 1, true))
