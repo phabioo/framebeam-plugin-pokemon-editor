@@ -1,6 +1,6 @@
 -- Controller of the Creature Editor: reads through the `pokemon.core` interface, keeps the panel state,
 -- turns "Apply" into encode_pokemon / encode_money calls and writes the returned operations with
--- fb.memory.write (permission memory.write; consent, the save snapshot and the run rules belong to the app).
+-- uz.memory.write (permission memory.write; consent, the save snapshot and the run rules belong to the app).
 -- After a write the creature is read back and compared before the editor says "applied".
 local form_mod = require("model.form")
 local panel = require("ui.panel")
@@ -15,8 +15,8 @@ M.REFRESH_EVERY = 90
 
 local NAME_KINDS = { "species", "move", "item" }
 
-function M.start(fb)
-  local function tr(key, vars) return fb.i18n.t(key, vars) end
+function M.start(uz)
+  local function tr(key, vars) return uz.i18n.t(key, vars) end
 
   local S = {
     view = "list", tab = "team", box = 1, filters = { species = "", move = "", item = "" }, money = "", errors = {},
@@ -30,15 +30,15 @@ function M.start(fb)
 
   -- ---- core access ----
 
-  -- fb.call into pokemon.core; returns the results, or nil, "call_failed" when the call itself raised.
+  -- uz.call into pokemon.core; returns the results, or nil, "call_failed" when the call itself raised.
   local function call(fn, ...)
-    local res = table.pack(pcall(fb.call, "pokemon.core", fn, ...))
+    local res = table.pack(pcall(uz.call, "pokemon.core", fn, ...))
     if not res[1] then return nil, "call_failed" end
     return res[2], res[3]
   end
 
   local function can_write()
-    return type(fb.memory) == "table" and type(fb.memory.write) == "function"
+    return type(uz.memory) == "table" and type(uz.memory.write) == "function"
   end
 
   local function load_names()
@@ -89,9 +89,9 @@ function M.start(fb)
     local ok, tree = pcall(panel.build, {
       tr = tr, state = S, core = core, names = names, team = team, box = box, box_count = box_count, trainer = trainer,
     })
-    if not ok then fb.log.error("panel build failed: " .. tostring(tree)); return end
-    local set_ok, err = pcall(fb.ui.set, "panel", tree)
-    if not set_ok then fb.log.error("ui.set failed: " .. tostring(err)) end
+    if not ok then uz.log.error("panel build failed: " .. tostring(tree)); return end
+    local set_ok, err = pcall(uz.ui.set, "panel", tree)
+    if not set_ok then uz.log.error("ui.set failed: " .. tostring(err)) end
   end
   self.render = render
 
@@ -119,7 +119,7 @@ function M.start(fb)
   -- Writes every op in order. Returns true, or false + message.
   local function write_ops(ops)
     for i, op in ipairs(ops) do
-      local res = table.pack(pcall(fb.memory.write, op.addr, op.bytes))
+      local res = table.pack(pcall(uz.memory.write, op.addr, op.bytes))
       if not res[1] then return false, write_error("permission", i > 1) end
       if res[2] ~= true then return false, write_error(res[3], i > 1) end
     end
@@ -299,17 +299,17 @@ function M.start(fb)
 
   -- ---- start ----
 
-  fb.ui.on_action(function(action, value, slot)
+  uz.ui.on_action(function(action, value, slot)
     if slot ~= "panel" then return end
     local ok, err = pcall(on_action, action, value)
     if not ok then
-      fb.log.error("action " .. tostring(action) .. " failed: " .. tostring(err))
+      uz.log.error("action " .. tostring(action) .. " failed: " .. tostring(err))
       say("danger", tr("err_internal"))
       render()
     end
   end)
 
-  fb.on_tick(function()
+  uz.on_tick(function()
     ticks = ticks + 1
     if S.pending and ticks % M.CHECK_EVERY == 0 then check_pending() end
     if ticks % M.RETRY_EVERY == 0 then
@@ -327,14 +327,14 @@ function M.start(fb)
     end
   end)
 
-  pcall(fb.events.on, M.CORE_ID, "team.changed", function()
+  pcall(uz.events.on, M.CORE_ID, "team.changed", function()
     if core.state == "ready" and S.view == "list" and not S.pending then
       refresh_data()
       render()
     end
   end)
 
-  fb.log.info(tr("loaded", { version = fb.plugin.version }))
+  uz.log.info(tr("loaded", { version = uz.plugin.version }))
   init()
   render()
   return self

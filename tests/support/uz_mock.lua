@@ -1,6 +1,6 @@
--- Fake `fb` for the Creature Editor tests (API 1 plus the 0.20 additions memory.write and UI blocks).
---   local m = fb_mock.new{ language = "de", core = <provider table> }
---   m.fb, m.ui.trees.panel, m.action(name, value), m.tick(n), m.writes, m.write_policy
+-- Fake `uz` for the Creature Editor tests (API 1 plus the 0.20 additions memory.write and UI blocks).
+--   local m = uz_mock.new{ language = "de", core = <provider table> }
+--   m.uz, m.ui.trees.panel, m.action(name, value), m.tick(n), m.writes, m.write_policy
 local M = {}
 local validator = require("ui_validator")
 
@@ -63,18 +63,18 @@ local function deep_copy(v)
 end
 M.deep_copy = deep_copy
 
--- opts: language, core (provider for "pokemon.core"), no_write (older app: no fb.memory.write),
+-- opts: language, core (provider for "pokemon.core"), no_write (older app: no uz.memory.write),
 -- write_policy (function(addr, bytes) -> true | nil, reason; default accepts everything),
 -- on_write (function(addr, bytes) called when a write was accepted: applies it to the fake world)
 function M.new(opts)
   opts = opts or {}
   local mock = { logs = {}, events = {}, writes = {}, providers = {}, calls = {}, write_policy = opts.write_policy }
-  local fb = { api = 1, plugin = { id = "uzume.monster-editor", version = "0.1.0" }, game = { language = opts.language } }
-  mock.fb = fb
+  local uz = { api = 1, plugin = { id = "uzume.monster-editor", version = "0.1.1" }, game = { language = opts.language } }
+  mock.uz = uz
 
-  fb.log = {}
+  uz.log = {}
   for _, level in ipairs({ "debug", "info", "warn", "error" }) do
-    fb.log[level] = function(...)
+    uz.log[level] = function(...)
       local parts = table.pack(...)
       for i = 1, parts.n do parts[i] = tostring(parts[i]) end
       mock.logs[#mock.logs + 1] = { level = level, text = table.concat(parts, "\t", 1, parts.n) }
@@ -87,13 +87,13 @@ function M.new(opts)
       if (h[1] == "*" or h[1] == plugin_id) and h[2] == name then h[3](deep_copy(value), plugin_id, name) end
     end
   end
-  fb.events = {
+  uz.events = {
     emit = function(name, value) check_value(value, 1); mock.events[#mock.events + 1] = { name = name, value = deep_copy(value) } end,
     on = function(plugin_id, name, fn) handlers[#handlers + 1] = { plugin_id, name, fn } end,
   }
 
   local tick_fn
-  fb.on_tick = function(fn) tick_fn = fn end
+  uz.on_tick = function(fn) tick_fn = fn end
   mock.frame = 0
   function mock.tick(n)
     for _ = 1, n or 1 do
@@ -108,14 +108,14 @@ function M.new(opts)
     for k, v in pairs(M.read_json_flat(read_file(dir .. "/" .. opts.language .. ".json"))) do strings[k] = v end
   end
   mock.strings = strings
-  fb.i18n = { t = function(key, vars)
+  uz.i18n = { t = function(key, vars)
     local s = strings[key] or key
     return (s:gsub("{([%w_]+)}", function(k) if vars and vars[k] ~= nil then return tostring(vars[k]) end end))
   end }
 
   if opts.core then mock.providers["pokemon.core"] = opts.core end
   function mock.set_provider(name, tbl) mock.providers[name] = tbl end
-  fb.call = function(name, fn, ...)
+  uz.call = function(name, fn, ...)
     local p = mock.providers[name]
     if not p then error("no plugin provides " .. tostring(name), 2) end
     local f = p[fn]
@@ -128,10 +128,10 @@ function M.new(opts)
     return table.unpack(res, 1, res.n)
   end
 
-  -- fb.memory.write: contract of Uzume 0.20: true, or nil + "consent_required" | "blocked_by_run_rule" | "unmapped".
-  fb.memory = {}
+  -- uz.memory.write: contract of Uzume 0.20: true, or nil + "consent_required" | "blocked_by_run_rule" | "unmapped".
+  uz.memory = {}
   if not opts.no_write then
-    fb.memory.write = function(addr, bytes)
+    uz.memory.write = function(addr, bytes)
       if math.type(addr) ~= "integer" or type(bytes) ~= "string" or #bytes == 0 then error("bad write arguments", 2) end
       local ok, why = true, nil
       if mock.write_policy then ok, why = mock.write_policy(addr, bytes) end
@@ -144,7 +144,7 @@ function M.new(opts)
 
   local ui = { trees = {}, sets = {}, titles = {} }
   mock.ui = ui
-  fb.ui = {
+  uz.ui = {
     set = function(slot, tree)
       if slot ~= "panel" then error("slot " .. tostring(slot) .. " not declared in manifest", 2) end
       local ok, err = validator.validate(tree)
