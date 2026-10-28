@@ -39,5 +39,5 @@ uzume-plugin-monster-editor is a separate editor plugin built on `uzume-plugin-s
 
 ## Pointers
 
-- Plan and status: `docs/roadmap.md`. Workflow, roles and brief template: `docs/workflow.md`.
+- Open work: GitHub issues and milestones; direction and history: `docs/roadmap.md`. Workflow, roles and brief template: `docs/workflow.md`.
 - Uzume docs: https://github.com/phabioo/uzume (`docs/roadmap.md` section 0.20, `docs/guides/plugin-api.md`, `docs/architecture/12-plugins.md`, `docs/adr/0023-plugins.md`).
