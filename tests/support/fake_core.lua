@@ -8,7 +8,7 @@ local STATS = { "hp", "atk", "def", "spe", "spa", "spd" }
 
 local function rec(slot, species, over)
   local r = { slot = slot, species = species, species_name = "Sp" .. species, nickname = "", level = 20, nature = 3,
-    shiny = false, held_item = 0, moves = { 33, 45 }, ivs = {}, evs = {}, exp = 8000 }
+    shiny = false, ability = species * 10 + 1, form = 0, held_item = 0, moves = { 33, 45 }, ivs = {}, evs = {}, exp = 8000 }
   for _, s in ipairs(STATS) do r.ivs[s] = 10; r.evs[s] = 0 end
   for k, v in pairs(over or {}) do r[k] = v end
   return r
@@ -77,13 +77,20 @@ function F.new(over)
   p.info = guard("info", function()
     return { game_id = "pokemon_omega_ruby", supported = w.supported, language = "en", features = {
       team = true, box = true, trainer = true, names = true, edit_pokemon = w.edit, edit_money = w.edit, edit_items = not w.old_core, bag = not w.old_core,
-      name_lists = true } }
+      name_lists = true, abilities = not w.no_abilities } }
   end)
   p.edit_limits = guard("edit_limits", function() return copy(w.limits) end)
   p.team = guard("team", function() return copy(w.team) end)
   p.box_count = guard("box_count", function() return 31 end)
   p.box = guard("box", function(n) return copy(w.boxes[n] or {}) end)
   p.trainer = guard("trainer", function() return { name = "Tester", money = w.money } end)
+  if not w.no_abilities then
+    p.abilities = guard("abilities", function(species, form)
+      if form ~= 0 then return nil, "no_form" end
+      return { { slot = 1, id = species * 10 + 1, name = "Ab" .. (species * 10 + 1) }, { slot = 2, id = species * 10 + 2 },
+        { slot = 3, id = species * 10 + 3, name = "Hid" .. species, hidden = true } }
+    end)
+  end
   p.name = guard("name", function(kind, id) return name_of(kind, id) end)
   p.names_list = guard("names_list", function(kind)
     if not w.names_ready then return nil, "not_ready" end
@@ -97,6 +104,7 @@ function F.new(over)
     for _, k in ipairs({ "species", "level", "nature", "shiny", "held_item" }) do
       if f[k] ~= nil then r[k == "held_item" and "held_item" or k] = f[k] end
     end
+    if f.ability then r.ability = f.ability elseif f.species then r.ability = f.species * 10 + 1 end
     if f.species then r.species_name = "Sp" .. f.species end
     for _, kind in ipairs({ "ivs", "evs" }) do
       for s, v in pairs(f[kind] or {}) do r[kind][s] = v end

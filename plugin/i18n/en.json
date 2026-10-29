@@ -33,7 +33,7 @@
   "nature": "Nature",
   "nature_n": "Nature {n}",
   "shiny": "Shiny",
-  "moves_note": "New moves start with a placeholder PP value.",
+  "moves_note": "New moves start with their base PP.",
   "stat_hp": "HP",
   "stat_atk": "Attack",
   "stat_def": "Defense",
@@ -79,7 +79,7 @@
   "err_invalid_field": "The value for {field} is not valid.",
   "err_core": "The core could not prepare the change ({code}).",
   "err_internal": "Something went wrong. See the plugin log.",
-  "warn_pp": "New moves start with 5 PP; healing refills them.",
+  "warn_pp": "The game's move data was not readable, so new moves start with 5 PP; healing refills them.",
   "warn_ability": "The ability was not changed.",
   "warn_stats": "Battle stats update on the next level change or box visit.",
   "warn_exp": "Experience points were not changed.",
@@ -105,5 +105,9 @@
   "msg_item_removed": "{name} removed.",
   "err_count": "Enter a whole count from 1 to {max}.",
   "err_pouch_full": "This pouch is full.",
-  "err_item_changed": "The bag changed. Pick the item again."
+  "err_item_changed": "The bag changed. Pick the item again.",
+  "sec_ability": "Ability",
+  "ability_hidden": "hidden",
+  "ability_follow": "Follows the species",
+  "warn_ability_slot": "The new species has no such ability slot, so its first ability was used."
 }

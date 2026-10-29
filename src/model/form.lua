@@ -59,7 +59,7 @@ end
 function M.from_record(rec)
   local f = {
     species = rec.species, level = rec.level and tostring(rec.level) or "", nature = rec.nature or 0,
-    shiny = rec.shiny == true, item = rec.held_item or 0, ivs = {}, evs = {}, moves = {},
+    shiny = rec.shiny == true, item = rec.held_item or 0, ability = rec.ability or 0, ivs = {}, evs = {}, moves = {},
   }
   for _, s in ipairs(M.STATS) do
     f.ivs[s] = tostring((rec.ivs or {})[s] or 0)
@@ -110,6 +110,8 @@ function M.to_fields(form, rec, limits)
   end
 
   if form.nature ~= base.nature then fields.nature = form.nature end
+  -- 0 = follow the species (the core keeps the ability slot), so only an explicit pick is sent.
+  if form.ability ~= base.ability and (form.ability or 0) ~= 0 then fields.ability = form.ability end
   if form.shiny ~= base.shiny then fields.shiny = form.shiny end
   if form.item ~= base.item then
     if math.type(form.item) ~= "integer" or form.item < 0 or form.item > L.item then errs.item = "err_item"
@@ -150,6 +152,7 @@ function M.matches(fields, rec)
   if fields.species and rec.species ~= fields.species then return false end
   if fields.level and rec.level ~= nil and rec.level ~= fields.level then return false end
   if fields.nature and rec.nature ~= fields.nature then return false end
+  if fields.ability and rec.ability ~= nil and rec.ability ~= fields.ability then return false end
   if fields.shiny ~= nil and rec.shiny ~= fields.shiny then return false end
   if fields.held_item and rec.held_item ~= fields.held_item then return false end
   for _, kind in ipairs({ "ivs", "evs" }) do

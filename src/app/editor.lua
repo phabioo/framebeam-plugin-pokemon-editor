@@ -148,7 +148,7 @@ function M.start(uz)
   end
 
   local WARN = { pp_unknown = "warn_pp", ability_unchanged = "warn_ability", stats_stale = "warn_stats",
-    exp_unchanged = "warn_exp" }
+    exp_unchanged = "warn_exp", ability_slot_fallback = "warn_ability_slot" }
 
   local function warning_text(warnings)
     local out = {}
@@ -236,6 +236,8 @@ function M.start(uz)
     box = call("box", v) or {}
   end
 
+  local load_abilities
+
   function H.edit(v)
     if type(v) ~= "table" then return end
     local rec
@@ -253,6 +255,7 @@ function M.start(uz)
     S.target = { kind = v.kind, slot = v.slot, box = v.box }
     S.rec, S.form, S.errors, S.msg = rec, form_mod.from_record(rec), {}, nil
     S.filters = { species = "", move = "", item = "" }
+    load_abilities()
     S.view = "edit"
   end
 
@@ -265,7 +268,23 @@ function M.start(uz)
     S.errors = errs
   end
 
-  function H.species(v) S.form.species = v; revalidate() end
+  -- Ability choices of the species/form being edited (feature `abilities`, core >= 0.7.1).
+  function load_abilities()
+    S.abil = nil
+    if not (core.features.abilities and S.form and S.rec) then return end
+    local same = S.form.species == S.rec.species
+    local list = call("abilities", S.form.species, same and (S.rec.form or 0) or 0)
+    if type(list) == "table" then S.abil = list end
+  end
+
+  function H.species(v)
+    S.form.species = v
+    -- a new species: the core moves the ability slot along, so the picker goes back to "follows the species"
+    S.form.ability = (v == S.rec.species) and (S.rec.ability or 0) or 0
+    load_abilities()
+    revalidate()
+  end
+  function H.ability(v) if math.type(v) == "integer" then S.form.ability = v end; revalidate() end
   function H.species_filter(v) S.filters.species = tostring(v or "") end
   function H.move_filter(v) S.filters.move = tostring(v or "") end
   function H.item_filter(v) S.filters.item = tostring(v or "") end
@@ -362,8 +381,21 @@ function M.start(uz)
   function H.bag_close() S.sel, S.count_err = nil, nil end
   function H.count_input(v) S.count, S.count_err = tostring(v or ""), nil end
 
+  -- Re-reads the pouch; true when the selected slot still holds the selected item. Otherwise the selection is dropped.
+  local function sel_still_valid()
+    local b = call("bag")
+    if type(b) == "table" then bag = b end
+    for _, r in ipairs(pouch_rows(S.sel.pouch)) do
+      if r.slot == S.sel.slot and r.item == S.sel.item then return true end
+    end
+    S.sel, S.count_err = nil, nil
+    say("warning", tr("err_item_changed"))
+    return false
+  end
+
   function H.count_apply()
     if S.pending or not S.sel then return end
+    if not sel_still_valid() then return end
     local n = parse_count(S.count, S.sel.pouch)
     if not n then S.count_err = "err_count"; return end
     queue_item(S.sel.pouch, S.sel.item, n, S.sel.slot)
@@ -371,6 +403,7 @@ function M.start(uz)
 
   function H.item_remove()
     if S.pending or not S.sel then return end
+    if not sel_still_valid() then return end
     queue_item(S.sel.pouch, S.sel.item, 0, S.sel.slot)
   end
 

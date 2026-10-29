@@ -33,7 +33,7 @@
   "nature": "Wesen",
   "nature_n": "Wesen {n}",
   "shiny": "Schillernd",
-  "moves_note": "Neue Attacken starten mit einem Platzhalter für AP.",
+  "moves_note": "Neue Attacken starten mit ihren Basis-AP.",
   "stat_hp": "KP",
   "stat_atk": "Angriff",
   "stat_def": "Verteidigung",
@@ -79,7 +79,7 @@
   "err_invalid_field": "Der Wert für {field} ist ungültig.",
   "err_core": "Der Core konnte die Änderung nicht vorbereiten ({code}).",
   "err_internal": "Etwas ist schiefgelaufen. Siehe das Plugin-Log.",
-  "warn_pp": "Neue Attacken starten mit 5 AP; Heilen füllt sie auf.",
+  "warn_pp": "Die Attackendaten des Spiels waren nicht lesbar, neue Attacken starten mit 5 AP; Heilen füllt sie auf.",
   "warn_ability": "Die Fähigkeit wurde nicht geändert.",
   "warn_stats": "Kampfwerte aktualisieren sich beim nächsten Levelwechsel oder Boxbesuch.",
   "warn_exp": "Erfahrungspunkte wurden nicht geändert.",
@@ -105,5 +105,9 @@
   "msg_item_removed": "{name} entfernt.",
   "err_count": "Ganze Anzahl von 1 bis {max} eingeben.",
   "err_pouch_full": "Dieses Fach ist voll.",
-  "err_item_changed": "Die Tasche hat sich geändert. Item neu wählen."
+  "err_item_changed": "Die Tasche hat sich geändert. Item neu wählen.",
+  "sec_ability": "Fähigkeit",
+  "ability_hidden": "versteckt",
+  "ability_follow": "Folgt der Art",
+  "warn_ability_slot": "Die neue Art hat diesen Fähigkeiten-Platz nicht, deshalb wurde ihre erste Fähigkeit gesetzt."
 }

@@ -167,7 +167,7 @@ function M.start(uz)
   end
 
   local WARN = { pp_unknown = "warn_pp", ability_unchanged = "warn_ability", stats_stale = "warn_stats",
-    exp_unchanged = "warn_exp" }
+    exp_unchanged = "warn_exp", ability_slot_fallback = "warn_ability_slot" }
 
   local function warning_text(warnings)
     local out = {}
@@ -255,6 +255,8 @@ function M.start(uz)
     box = call("box", v) or {}
   end
 
+  local load_abilities
+
   function H.edit(v)
     if type(v) ~= "table" then return end
     local rec
@@ -272,6 +274,7 @@ function M.start(uz)
     S.target = { kind = v.kind, slot = v.slot, box = v.box }
     S.rec, S.form, S.errors, S.msg = rec, form_mod.from_record(rec), {}, nil
     S.filters = { species = "", move = "", item = "" }
+    load_abilities()
     S.view = "edit"
   end
 
@@ -284,7 +287,23 @@ function M.start(uz)
     S.errors = errs
   end
 
-  function H.species(v) S.form.species = v; revalidate() end
+  -- Ability choices of the species/form being edited (feature `abilities`, core >= 0.7.1).
+  function load_abilities()
+    S.abil = nil
+    if not (core.features.abilities and S.form and S.rec) then return end
+    local same = S.form.species == S.rec.species
+    local list = call("abilities", S.form.species, same and (S.rec.form or 0) or 0)
+    if type(list) == "table" then S.abil = list end
+  end
+
+  function H.species(v)
+    S.form.species = v
+    -- a new species: the core moves the ability slot along, so the picker goes back to "follows the species"
+    S.form.ability = (v == S.rec.species) and (S.rec.ability or 0) or 0
+    load_abilities()
+    revalidate()
+  end
+  function H.ability(v) if math.type(v) == "integer" then S.form.ability = v end; revalidate() end
   function H.species_filter(v) S.filters.species = tostring(v or "") end
   function H.move_filter(v) S.filters.move = tostring(v or "") end
   function H.item_filter(v) S.filters.item = tostring(v or "") end
@@ -381,8 +400,21 @@ function M.start(uz)
   function H.bag_close() S.sel, S.count_err = nil, nil end
   function H.count_input(v) S.count, S.count_err = tostring(v or ""), nil end
 
+  -- Re-reads the pouch; true when the selected slot still holds the selected item. Otherwise the selection is dropped.
+  local function sel_still_valid()
+    local b = call("bag")
+    if type(b) == "table" then bag = b end
+    for _, r in ipairs(pouch_rows(S.sel.pouch)) do
+      if r.slot == S.sel.slot and r.item == S.sel.item then return true end
+    end
+    S.sel, S.count_err = nil, nil
+    say("warning", tr("err_item_changed"))
+    return false
+  end
+
   function H.count_apply()
     if S.pending or not S.sel then return end
+    if not sel_still_valid() then return end
     local n = parse_count(S.count, S.sel.pouch)
     if not n then S.count_err = "err_count"; return end
     queue_item(S.sel.pouch, S.sel.item, n, S.sel.slot)
@@ -390,6 +422,7 @@ function M.start(uz)
 
   function H.item_remove()
     if S.pending or not S.sel then return end
+    if not sel_still_valid() then return end
     queue_item(S.sel.pouch, S.sel.item, 0, S.sel.slot)
   end
 
@@ -548,7 +581,7 @@ end
 function M.from_record(rec)
   local f = {
     species = rec.species, level = rec.level and tostring(rec.level) or "", nature = rec.nature or 0,
-    shiny = rec.shiny == true, item = rec.held_item or 0, ivs = {}, evs = {}, moves = {},
+    shiny = rec.shiny == true, item = rec.held_item or 0, ability = rec.ability or 0, ivs = {}, evs = {}, moves = {},
   }
   for _, s in ipairs(M.STATS) do
     f.ivs[s] = tostring((rec.ivs or {})[s] or 0)
@@ -599,6 +632,8 @@ function M.to_fields(form, rec, limits)
   end
 
   if form.nature ~= base.nature then fields.nature = form.nature end
+  -- 0 = follow the species (the core keeps the ability slot), so only an explicit pick is sent.
+  if form.ability ~= base.ability and (form.ability or 0) ~= 0 then fields.ability = form.ability end
   if form.shiny ~= base.shiny then fields.shiny = form.shiny end
   if form.item ~= base.item then
     if math.type(form.item) ~= "integer" or form.item < 0 or form.item > L.item then errs.item = "err_item"
@@ -639,6 +674,7 @@ function M.matches(fields, rec)
   if fields.species and rec.species ~= fields.species then return false end
   if fields.level and rec.level ~= nil and rec.level ~= fields.level then return false end
   if fields.nature and rec.nature ~= fields.nature then return false end
+  if fields.ability and rec.ability ~= nil and rec.ability ~= fields.ability then return false end
   if fields.shiny ~= nil and rec.shiny ~= fields.shiny then return false end
   if fields.held_item and rec.held_item ~= fields.held_item then return false end
   for _, kind in ipairs({ "ivs", "evs" }) do
@@ -891,6 +927,27 @@ local function stat_grid(ctx, kind, form, errs)
   return { type = "grid", id = kind .. "-grid", columns = 3, gap = 8, children = cells }
 end
 
+-- Ability picker: choices of the chosen species/form from the core's abilities(); nil without the feature.
+local function ability_section(ctx)
+  local st, tr = ctx.state, ctx.tr
+  if not (ctx.core.features.abilities and type(st.abil) == "table" and #st.abil > 0) then return nil end
+  local cur = st.form.ability or 0
+  local opts, seen = {}, {}
+  if cur == 0 then opts[1] = { value = 0, label = tr("ability_follow") }; seen[0] = true end
+  for _, a in ipairs(st.abil) do
+    if not seen[a.id] then
+      local label = (a.name and a.name ~= "") and a.name or label_of(a.id)
+      if a.hidden then label = label .. " (" .. tr("ability_hidden") .. ")" end
+      opts[#opts + 1] = { value = a.id, label = label }
+      seen[a.id] = true
+    end
+  end
+  if not seen[cur] then table.insert(opts, 1, { value = cur, label = label_of(cur) }) end
+  return { type = "section", id = "sec-ability", title = tr("sec_ability"), children = {
+    { type = "select", id = "ability", options = opts, selected = cur, action = "ability" },
+  } }
+end
+
 local function edit_view(ctx)
   local st = ctx.state
   local tr = ctx.tr
@@ -908,7 +965,7 @@ local function edit_view(ctx)
     moves[#moves + 1] = filtered_select(ctx, "move" .. i, names.move, f.moves[i], st.filters.move, "move_" .. i, true)
   end
 
-  local kids = {
+  local kids = K(
     { type = "row", id = "e-head", gap = 8, align = "center", children = {
       { type = "button", id = "e-back", label = tr("back"), action = "back", variant = "quiet" },
       { type = "text", id = "e-title", text = mon_title(tr, st.rec), style = "heading" },
@@ -924,6 +981,7 @@ local function edit_view(ctx)
       { type = "select", id = "nature", options = nature_opts, selected = f.nature, action = "nature" },
       { type = "toggle", id = "shiny", label = tr("shiny"), checked = f.shiny, action = "shiny" },
     } },
+    ability_section(ctx),
     { type = "section", id = "sec-moves", title = tr("sec_moves"), children = K(
       { type = "textfield", id = "move-filter", action = "move_filter", text = st.filters.move, live = true,
         placeholder = tr("filter_move") },
@@ -941,8 +999,8 @@ local function edit_view(ctx)
       { type = "textfield", id = "item-filter", action = "item_filter", text = st.filters.item, live = true,
         placeholder = tr("filter_item") },
       filtered_select(ctx, "item", names.item, f.item, st.filters.item, "item", true),
-    } },
-  }
+    } }
+  )
   local msg = banner(ctx)
   if msg then kids[#kids + 1] = msg end
   kids[#kids + 1] = { type = "row", id = "e-acts", gap = 8, align = "center", children = {

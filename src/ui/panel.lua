@@ -212,6 +212,27 @@ local function stat_grid(ctx, kind, form, errs)
   return { type = "grid", id = kind .. "-grid", columns = 3, gap = 8, children = cells }
 end
 
+-- Ability picker: choices of the chosen species/form from the core's abilities(); nil without the feature.
+local function ability_section(ctx)
+  local st, tr = ctx.state, ctx.tr
+  if not (ctx.core.features.abilities and type(st.abil) == "table" and #st.abil > 0) then return nil end
+  local cur = st.form.ability or 0
+  local opts, seen = {}, {}
+  if cur == 0 then opts[1] = { value = 0, label = tr("ability_follow") }; seen[0] = true end
+  for _, a in ipairs(st.abil) do
+    if not seen[a.id] then
+      local label = (a.name and a.name ~= "") and a.name or label_of(a.id)
+      if a.hidden then label = label .. " (" .. tr("ability_hidden") .. ")" end
+      opts[#opts + 1] = { value = a.id, label = label }
+      seen[a.id] = true
+    end
+  end
+  if not seen[cur] then table.insert(opts, 1, { value = cur, label = label_of(cur) }) end
+  return { type = "section", id = "sec-ability", title = tr("sec_ability"), children = {
+    { type = "select", id = "ability", options = opts, selected = cur, action = "ability" },
+  } }
+end
+
 local function edit_view(ctx)
   local st = ctx.state
   local tr = ctx.tr
@@ -229,7 +250,7 @@ local function edit_view(ctx)
     moves[#moves + 1] = filtered_select(ctx, "move" .. i, names.move, f.moves[i], st.filters.move, "move_" .. i, true)
   end
 
-  local kids = {
+  local kids = K(
     { type = "row", id = "e-head", gap = 8, align = "center", children = {
       { type = "button", id = "e-back", label = tr("back"), action = "back", variant = "quiet" },
       { type = "text", id = "e-title", text = mon_title(tr, st.rec), style = "heading" },
@@ -245,6 +266,7 @@ local function edit_view(ctx)
       { type = "select", id = "nature", options = nature_opts, selected = f.nature, action = "nature" },
       { type = "toggle", id = "shiny", label = tr("shiny"), checked = f.shiny, action = "shiny" },
     } },
+    ability_section(ctx),
     { type = "section", id = "sec-moves", title = tr("sec_moves"), children = K(
       { type = "textfield", id = "move-filter", action = "move_filter", text = st.filters.move, live = true,
         placeholder = tr("filter_move") },
@@ -262,8 +284,8 @@ local function edit_view(ctx)
       { type = "textfield", id = "item-filter", action = "item_filter", text = st.filters.item, live = true,
         placeholder = tr("filter_item") },
       filtered_select(ctx, "item", names.item, f.item, st.filters.item, "item", true),
-    } },
-  }
+    } }
+  )
   local msg = banner(ctx)
   if msg then kids[#kids + 1] = msg end
   kids[#kids + 1] = { type = "row", id = "e-acts", gap = 8, align = "center", children = {
