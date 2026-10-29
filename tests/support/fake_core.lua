@@ -1,4 +1,4 @@
--- Fake `pokemon.core` (contract v0.4 write helpers) with synthetic data only. Names are made up by code.
+-- Fake `pokemon.core` (contract v0.6: write helpers incl. bag/encode_item) with synthetic data only. Names are made up by code.
 --   local core = fake_core.new{ ... }       core.provider -> mock.set_provider("pokemon.core", core.provider)
 --   core.commit(addr, bytes)                 the mock's on_write hook: applies an encoded change to the world
 --   core.world.hold = true                   accepted writes are not applied (simulates "game keeps old values")
@@ -28,8 +28,17 @@ function F.new(over)
     team = { rec(1, 25, { nickname = "Zap" }), rec(2, 7) },
     boxes = { [1] = { rec(1, 133), rec(4, 150) }, [2] = {} },
     money = 5000,
+    old_core = false,   -- true: no bag()/encode_item(), features edit_items/bag off (core < 0.7.0)
+    bag = {
+      items = { { slot = 1, item = 4, count = 5 }, { slot = 2, item = 17, count = 30 }, { slot = 3, item = 9, count = 1 } },
+      key_items = { { slot = 1, item = 500, count = 1 } },
+      tms = {}, medicine = {}, berries = {},
+    },
     limits = { species = 721, move = 617, item = 775, ability = 191, nature = 24, level = 100, iv = 31, ev = 255, ev_total = 510,
-      money = 999999, team_slots = 6, boxes = 31, box_slots = 30 },
+      money = 999999, item_count = 999,
+      pouches = { items = { slots = 400, max_count = 999 }, key_items = { slots = 96, max_count = 1 }, tms = { slots = 108, max_count = 1 },
+        medicine = { slots = 64, max_count = 999 }, berries = { slots = 72, max_count = 999 } },
+      team_slots = 6, boxes = 31, box_slots = 30 },
     names_ready = true,
     off = {},       -- function name -> reason ("not_ready", ...)
     encode_error = nil,
@@ -67,7 +76,7 @@ function F.new(over)
   local p = {}
   p.info = guard("info", function()
     return { game_id = "pokemon_omega_ruby", supported = w.supported, language = "en", features = {
-      team = true, box = true, trainer = true, names = true, edit_pokemon = w.edit, edit_money = w.edit, edit_items = false,
+      team = true, box = true, trainer = true, names = true, edit_pokemon = w.edit, edit_money = w.edit, edit_items = not w.old_core, bag = not w.old_core,
       name_lists = true } }
   end)
   p.edit_limits = guard("edit_limits", function() return copy(w.limits) end)
@@ -118,6 +127,41 @@ function F.new(over)
     self.pending[0x9000] = { bytes = bytes, apply = function() w.money = value end }
     return { addr = 0x9000, bytes = bytes, ops = { { addr = 0x9000, bytes = bytes } }, warnings = {} }
   end)
+
+  local function bag_rows()
+    local out = {}
+    for pouch, rows in pairs(w.bag) do
+      out[pouch] = {}
+      for i, r in ipairs(rows) do out[pouch][i] = { slot = i, item = r.item, count = r.count, name = "It" .. r.item } end
+    end
+    return out
+  end
+  if not w.old_core then
+    p.bag = guard("bag", function() return bag_rows() end)
+    p.encode_item = guard("encode_item", function(pouch, item, count, slot)
+      local rows = w.bag[pouch]
+      local lim = w.limits.pouches[pouch]
+      if not rows then return nil, "unknown_pouch" end
+      if math.type(item) ~= "integer" or item < 1 or item > w.limits.item then return nil, "invalid_item" end
+      if math.type(count) ~= "integer" or count < 0 or count > lim.max_count then return nil, "invalid_count" end
+      local idx = slot
+      if idx == nil then for i, r in ipairs(rows) do if r.item == item then idx = i end end end
+      if idx == nil then
+        if count == 0 then return nil, "invalid_item" end
+        if #rows >= lim.slots or w.pouch_full then return nil, "pouch_full" end
+        idx = #rows + 1
+      end
+      if idx < 1 or idx > #rows + 1 then return nil, "invalid_slot" end
+      local bytes = string.format("IT:%s:%d:%d:%d", pouch, idx, item, count)
+      local ops = { { addr = 0xA000 + idx * 4, bytes = bytes } }
+      if count == 0 and idx < #rows then ops[2] = { addr = 0xB000 + idx * 4, bytes = "SHIFT" } end
+      self.pending[ops[1].addr] = { bytes = bytes, apply = function()
+        if count == 0 then table.remove(rows, idx) elseif rows[idx] then rows[idx] = { item = item, count = count }
+        else rows[idx] = { item = item, count = count } end
+      end }
+      return { addr = ops[1].addr, bytes = bytes, ops = ops, warnings = {}, pouch = pouch, slot = idx }
+    end)
+  end
 
   self.provider = p
   function self.commit(addr, bytes)

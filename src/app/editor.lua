@@ -19,12 +19,14 @@ function M.start(uz)
   local function tr(key, vars) return uz.i18n.t(key, vars) end
 
   local S = {
-    view = "list", tab = "team", box = 1, filters = { species = "", move = "", item = "" }, money = "", errors = {},
+    view = "list", tab = "team", box = 1, pouch = "items", bag_filter = "", count = "", add = { filter = "", count = "1", id = "" }, filters = { species = "", move = "", item = "" }, money = "", errors = {},
   }
   local core = { state = "wait", features = {}, limits = form_mod.limits_of(nil) }
   local names = { species = nil, move = nil, item = nil, nature = {} }
   local team, box, trainer, box_count = {}, {}, nil, 31
+  local bag, bag_err = nil, nil
   local ticks = 0
+  local bag_enabled
 
   local self = { state = S, core = core, names = names }
 
@@ -62,12 +64,18 @@ function M.start(uz)
     names.ready = not missing
   end
 
+  -- The item editor needs the core's bag() and encode_item() (soullink-core 0.7.0); older cores keep money only.
+  function bag_enabled()
+    return core.features.edit_items == true and core.features.bag == true
+  end
+
   local function refresh_data()
     team = call("team") or {}
     if S.tab == "box" or S.view == "edit" then box = call("box", S.box) or {} end
     local n = call("box_count")
     if math.type(n) == "integer" and n >= 1 then box_count = n end
     trainer = call("trainer")
+    if S.tab == "bag" and bag_enabled() then bag, bag_err = call("bag") end
   end
 
   local function init()
@@ -87,7 +95,8 @@ function M.start(uz)
 
   local function render()
     local ok, tree = pcall(panel.build, {
-      tr = tr, state = S, core = core, names = names, team = team, box = box, box_count = box_count, trainer = trainer,
+      tr = tr, state = S, core = core, names = names, bag = bag, bag_err = bag_err, bag_on = bag_enabled(),
+      team = team, box = box, box_count = box_count, trainer = trainer,
     })
     if not ok then uz.log.error("panel build failed: " .. tostring(tree)); return end
     local set_ok, err = pcall(uz.ui.set, "panel", tree)
@@ -128,7 +137,8 @@ function M.start(uz)
 
   local CORE_ERR = { not_ready = "err_core_not_ready", empty_slot = "err_empty_slot", growth_unavailable = "err_growth",
     ev_total = "err_ev_total", invalid_location = "err_empty_slot", unsupported = "err_unsupported",
-    invalid_money = "err_money" }
+    invalid_money = "err_money", pouch_full = "err_pouch_full", invalid_slot = "err_item_changed",
+    unknown_pouch = "err_unsupported" }
 
   local function core_error(why)
     local key = CORE_ERR[why]
@@ -172,6 +182,13 @@ function M.start(uz)
       else
         say("warning", tr("msg_unconfirmed"))
       end
+    elseif p.kind == "item" then
+      if ok then
+        say("ok", tr(p.count == 0 and "msg_item_removed" or "msg_item_applied", { name = p.name }))
+        S.sel = nil
+      else
+        say("warning", tr("msg_unconfirmed"))
+      end
     else
       if ok then say("ok", tr("msg_money_applied", { n = p.value })) else say("warning", tr("msg_unconfirmed")) end
     end
@@ -186,6 +203,16 @@ function M.start(uz)
     if p.kind == "pokemon" then
       local rec = current_record(p.target)
       ok = rec ~= nil and form_mod.matches(p.fields, rec)
+    elseif p.kind == "item" then
+      local b = call("bag")
+      local rows = type(b) == "table" and b[p.pouch] or nil
+      if rows then
+        local n, hit = 0, false
+        for _, r in ipairs(rows) do
+          if r.item == p.item then n = n + 1; if r.count == p.count then hit = true end end
+        end
+        ok = p.count == 0 and n < p.before or (p.count ~= 0 and hit)
+      end
     else
       local t = call("trainer")
       ok = type(t) == "table" and t.money == p.value
@@ -276,6 +303,98 @@ function M.start(uz)
     if not ok then say("danger", text); return end
     S.pending = { kind = "money", value = n, tries = 0 }
     say("info", tr("msg_sent"))
+  end
+
+  -- ---- bag ----
+
+  local function pouch_rows(pouch)
+    return type(bag) == "table" and type(bag[pouch]) == "table" and bag[pouch] or {}
+  end
+
+  local function item_label(rows_or_nil, id)
+    for _, r in ipairs(rows_or_nil or {}) do
+      if r.item == id and r.name and r.name ~= "" then return r.name end
+    end
+    for _, e in ipairs(names.item or {}) do
+      if e.id == id and e.name ~= "" then return e.name end
+    end
+    return "#" .. tostring(id)
+  end
+
+  -- Encodes one item change and writes all its ops in one step (removal shifts later slots, so several ops).
+  local function queue_item(pouch, item, count, slot)
+    local res, why = call("encode_item", pouch, item, count, slot)
+    if not res then say("danger", core_error(why)); return end
+    local ops = res.ops or { { addr = res.addr, bytes = res.bytes } }
+    local ok, text = write_ops(ops)
+    if not ok then say("danger", text); return end
+    local before = 0
+    for _, r in ipairs(pouch_rows(pouch)) do if r.item == item then before = before + 1 end end
+    S.pending = { kind = "item", pouch = pouch, item = item, count = count, before = before, tries = 0,
+      name = item_label(pouch_rows(pouch), item) }
+    say("info", tr("msg_sent"))
+  end
+
+  local function parse_count(text, pouch)
+    local n = form_mod.parse_int(text)
+    if n == nil or n < 1 or n > form_mod.pouch_max(core.limits, pouch) then return nil end
+    return n
+  end
+
+  for _, name in ipairs(form_mod.POUCHES) do
+    H["pouch_" .. name] = function()
+      S.pouch, S.sel, S.count_err, S.bag_filter, S.msg = name, nil, nil, "", nil
+      refresh_data()
+    end
+  end
+
+  function H.bag_filter(v) S.bag_filter = tostring(v or "") end
+
+  function H.bag_edit(v)
+    if type(v) ~= "table" then return end
+    local row
+    for _, r in ipairs(pouch_rows(S.pouch)) do if r.slot == v.slot then row = r end end
+    if not row then say("warning", tr("err_item_changed")); return end
+    S.sel = { pouch = S.pouch, slot = row.slot, item = row.item }
+    S.count, S.count_err, S.msg = tostring(row.count), nil, nil
+  end
+
+  function H.bag_close() S.sel, S.count_err = nil, nil end
+  function H.count_input(v) S.count, S.count_err = tostring(v or ""), nil end
+
+  function H.count_apply()
+    if S.pending or not S.sel then return end
+    local n = parse_count(S.count, S.sel.pouch)
+    if not n then S.count_err = "err_count"; return end
+    queue_item(S.sel.pouch, S.sel.item, n, S.sel.slot)
+  end
+
+  function H.item_remove()
+    if S.pending or not S.sel then return end
+    queue_item(S.sel.pouch, S.sel.item, 0, S.sel.slot)
+  end
+
+  function H.add_filter(v) S.add.filter, S.add.item = tostring(v or ""), nil end
+  function H.add_item(v) S.add.item = v end
+  function H.add_id(v) S.add.id, S.add.id_err = tostring(v or ""), nil end
+  function H.add_count(v) S.add.count, S.add.count_err = tostring(v or ""), nil end
+
+  function H.add_apply()
+    if S.pending then return end
+    local item
+    if names.item then
+      item = S.add.item
+      if item == nil then
+        local opts = form_mod.filter_options(names.item, S.add.filter, nil, 100, function(id) return "#" .. id end)
+        item = opts[1] and opts[1].value
+      end
+    else
+      item = form_mod.parse_int(S.add.id)
+    end
+    if item == nil or item < 1 or item > core.limits.item then S.add.id_err = "err_item"; return end
+    local n = parse_count(S.add.count, S.pouch)
+    if not n then S.add.count_err = "err_count"; return end
+    queue_item(S.pouch, item, n)
   end
 
   local function on_action(action, value)

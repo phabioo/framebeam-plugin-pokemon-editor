@@ -8,7 +8,35 @@ M.MOVE_SLOTS = 4
 
 -- Limits used when the core does not report any (older core): the Gen 6 values.
 M.DEFAULT_LIMITS = { species = 721, move = 617, item = 775, level = 100, iv = 31, ev = 255, ev_total = 510, nature = 24,
-  money = 999999 }
+  money = 999999, item_count = 999 }
+
+-- Bag pouches in display order (names as the core reports them).
+M.POUCHES = { "items", "medicine", "berries", "tms", "key_items" }
+
+--- Largest count a pouch takes: the core's per-pouch limit, else the general item count limit.
+function M.pouch_max(limits, pouch)
+  local p = type(limits.pouches) == "table" and limits.pouches[pouch] or nil
+  return (p and p.max_count) or limits.item_count or 999
+end
+
+--- Pouches to offer: the ones the core lists in edit_limits (display order), else all known.
+function M.pouches_of(limits)
+  if type(limits.pouches) ~= "table" or next(limits.pouches) == nil then return M.POUCHES end
+  local out = {}
+  for _, n in ipairs(M.POUCHES) do if limits.pouches[n] then out[#out + 1] = n end end
+  return #out > 0 and out or M.POUCHES
+end
+
+--- Rows of a pouch whose name contains the filter (case-insensitive); id as "#id" when the name is unknown.
+function M.filter_rows(rows, filter)
+  local f = (filter or ""):lower()
+  local out = {}
+  for _, r in ipairs(rows or {}) do
+    local label = (r.name and r.name ~= "") and r.name or ("#" .. tostring(r.item))
+    if f == "" or label:lower():find(f, 1, true) then out[#out + 1] = r end
+  end
+  return out
+end
 
 local function limits_of(limits)
   local out = {}

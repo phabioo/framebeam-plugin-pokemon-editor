@@ -86,6 +86,82 @@ local function box_tab(ctx)
   return { type = "column", id = "box-col", gap = 8, children = kids }
 end
 
+local function filtered_select(ctx, id, list, current, filter, action, with_none)
+  local opts = form_mod.filter_options(list, filter, current, with_none and 99 or 100, label_of)
+  if with_none then
+    local has_zero = false
+    for _, o in ipairs(opts) do if o.value == 0 then has_zero = true end end
+    if not has_zero then table.insert(opts, 1, { value = 0, label = ctx.tr("none") }) end
+  end
+  for _, o in ipairs(opts) do if o.value == 0 and with_none then o.label = ctx.tr("none") end end
+  if #opts == 0 then opts[1] = { value = 0, label = ctx.tr("none") } end
+  return { type = "select", id = id, options = opts, selected = current ~= nil and current or opts[1].value, action = action }
+end
+
+local function pouch_section(ctx)
+  local st, tr = ctx.state, ctx.tr
+  local limits = ctx.core.limits
+  local chips = {}
+  for _, name in ipairs(form_mod.pouches_of(limits)) do
+    chips[#chips + 1] = { type = "chip", id = "pouch-" .. name, text = tr("pouch_" .. name), action = "pouch_" .. name,
+      selected = st.pouch == name }
+  end
+  local kids = { { type = "grid", id = "pouch-chips", columns = 3, gap = 4, children = chips } }
+  if type(ctx.bag) ~= "table" then
+    local key = ctx.bag_err == "unsupported" and "bag_unsupported" or "bag_not_ready"
+    kids[#kids + 1] = { type = "text", id = "bag-note", text = tr(key), style = "meta" }
+    return { type = "section", id = "items-sec", title = tr("items_title"), children = kids }
+  end
+  local rows_all = ctx.bag[st.pouch] or {}
+  local rows = {}
+  local shown = form_mod.filter_rows(rows_all, st.bag_filter)
+  for i, r in ipairs(shown) do
+    if i > M.MAX_ROWS then break end
+    rows[#rows + 1] = { id = "b" .. r.slot, title = (r.name and r.name ~= "") and r.name or label_of(r.item),
+      sub = tr("item_count_sub", { n = r.count }), action = "bag_edit", value = { slot = r.slot } }
+  end
+  kids[#kids + 1] = { type = "textfield", id = "bag-filter", action = "bag_filter", text = st.bag_filter, live = true,
+    placeholder = tr("filter_item") }
+  if #rows == 0 then
+    kids[#kids + 1] = { type = "text", id = "bag-empty", text = tr(#rows_all == 0 and "pouch_empty" or "pouch_no_match"), style = "meta" }
+  else
+    kids[#kids + 1] = { type = "list", id = "bag-list", rows = rows }
+    if #shown > #rows then
+      kids[#kids + 1] = { type = "text", id = "bag-more", text = tr("pouch_more", { n = #rows, total = #shown }), style = "meta" }
+    end
+  end
+  local max = form_mod.pouch_max(limits, st.pouch)
+  if st.sel and st.sel.pouch == st.pouch then
+    local name
+    for _, r in ipairs(rows_all) do if r.slot == st.sel.slot then name = r.name end end
+    kids[#kids + 1] = { type = "section", id = "sel-sec", title = (name and name ~= "") and name or label_of(st.sel.item), children = {
+      { type = "text", id = "count-l", text = tr("item_count_label", { max = max }), style = "meta" },
+      { type = "textfield", id = "count-input", action = "count_input", text = st.count or "", live = true,
+        error = st.count_err and tr(st.count_err, { max = max }) or nil },
+      { type = "row", id = "sel-acts", gap = 8, align = "center", children = {
+        { type = "button", id = "count-apply", label = tr("count_apply"), action = "count_apply", variant = "primary" },
+        { type = "button", id = "item-remove", label = tr("item_remove"), action = "item_remove", variant = "danger" },
+        { type = "button", id = "sel-close", label = tr("back"), action = "bag_close", variant = "quiet" },
+      } },
+    } }
+  end
+  local add = st.add
+  local add_kids = {}
+  if ctx.names.item then
+    add_kids[#add_kids + 1] = { type = "textfield", id = "add-filter", action = "add_filter", text = add.filter, live = true,
+      placeholder = tr("filter_item") }
+    add_kids[#add_kids + 1] = filtered_select(ctx, "add-item", ctx.names.item, add.item, add.filter, "add_item", false)
+  else
+    add_kids[#add_kids + 1] = { type = "textfield", id = "add-id", action = "add_id", text = add.id, live = true,
+      placeholder = tr("add_id_placeholder", { max = limits.item }), error = add.id_err and tr(add.id_err) or nil }
+  end
+  add_kids[#add_kids + 1] = { type = "textfield", id = "add-count", action = "add_count", text = add.count, live = true,
+    placeholder = tr("add_count_placeholder", { max = max }), error = add.count_err and tr(add.count_err, { max = max }) or nil }
+  add_kids[#add_kids + 1] = { type = "button", id = "add-apply", label = tr("add_apply"), action = "add_apply", variant = "primary" }
+  kids[#kids + 1] = { type = "section", id = "add-sec", title = tr("add_title"), children = add_kids }
+  return { type = "section", id = "items-sec", title = tr("items_title"), children = kids }
+end
+
 local function bag_tab(ctx)
   local st = ctx.state
   local limits = ctx.core.limits
@@ -98,7 +174,9 @@ local function bag_tab(ctx)
       { type = "button", id = "money-apply", label = ctx.tr("money_apply"), action = "money_apply", variant = "primary" },
     } },
   }
-  if not ctx.core.features.edit_items then
+  if ctx.bag_on then
+    kids[#kids + 1] = pouch_section(ctx)
+  else
     kids[#kids + 1] = { type = "section", id = "items-sec", title = ctx.tr("items_title"), children = {
       { type = "text", id = "items-note", text = ctx.tr("items_unsupported"), style = "meta" } } }
   end
@@ -120,17 +198,6 @@ local function list_view(ctx)
 end
 
 -- ---- edit form ----
-
-local function filtered_select(ctx, id, list, current, filter, action, with_none)
-  local opts = form_mod.filter_options(list, filter, current, with_none and 99 or 100, label_of)
-  if with_none then
-    local has_zero = false
-    for _, o in ipairs(opts) do if o.value == 0 then has_zero = true end end
-    if not has_zero then table.insert(opts, 1, { value = 0, label = ctx.tr("none") }) end
-  end
-  for _, o in ipairs(opts) do if o.value == 0 and with_none then o.label = ctx.tr("none") end end
-  return { type = "select", id = id, options = opts, selected = current, action = action }
-end
 
 local function stat_grid(ctx, kind, form, errs)
   local st_names = { hp = "stat_hp", atk = "stat_atk", def = "stat_def", spe = "stat_spe", spa = "stat_spa", spd = "stat_spd" }

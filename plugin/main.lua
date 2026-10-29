@@ -38,12 +38,14 @@ function M.start(uz)
   local function tr(key, vars) return uz.i18n.t(key, vars) end
 
   local S = {
-    view = "list", tab = "team", box = 1, filters = { species = "", move = "", item = "" }, money = "", errors = {},
+    view = "list", tab = "team", box = 1, pouch = "items", bag_filter = "", count = "", add = { filter = "", count = "1", id = "" }, filters = { species = "", move = "", item = "" }, money = "", errors = {},
   }
   local core = { state = "wait", features = {}, limits = form_mod.limits_of(nil) }
   local names = { species = nil, move = nil, item = nil, nature = {} }
   local team, box, trainer, box_count = {}, {}, nil, 31
+  local bag, bag_err = nil, nil
   local ticks = 0
+  local bag_enabled
 
   local self = { state = S, core = core, names = names }
 
@@ -81,12 +83,18 @@ function M.start(uz)
     names.ready = not missing
   end
 
+  -- The item editor needs the core's bag() and encode_item() (soullink-core 0.7.0); older cores keep money only.
+  function bag_enabled()
+    return core.features.edit_items == true and core.features.bag == true
+  end
+
   local function refresh_data()
     team = call("team") or {}
     if S.tab == "box" or S.view == "edit" then box = call("box", S.box) or {} end
     local n = call("box_count")
     if math.type(n) == "integer" and n >= 1 then box_count = n end
     trainer = call("trainer")
+    if S.tab == "bag" and bag_enabled() then bag, bag_err = call("bag") end
   end
 
   local function init()
@@ -106,7 +114,8 @@ function M.start(uz)
 
   local function render()
     local ok, tree = pcall(panel.build, {
-      tr = tr, state = S, core = core, names = names, team = team, box = box, box_count = box_count, trainer = trainer,
+      tr = tr, state = S, core = core, names = names, bag = bag, bag_err = bag_err, bag_on = bag_enabled(),
+      team = team, box = box, box_count = box_count, trainer = trainer,
     })
     if not ok then uz.log.error("panel build failed: " .. tostring(tree)); return end
     local set_ok, err = pcall(uz.ui.set, "panel", tree)
@@ -147,7 +156,8 @@ function M.start(uz)
 
   local CORE_ERR = { not_ready = "err_core_not_ready", empty_slot = "err_empty_slot", growth_unavailable = "err_growth",
     ev_total = "err_ev_total", invalid_location = "err_empty_slot", unsupported = "err_unsupported",
-    invalid_money = "err_money" }
+    invalid_money = "err_money", pouch_full = "err_pouch_full", invalid_slot = "err_item_changed",
+    unknown_pouch = "err_unsupported" }
 
   local function core_error(why)
     local key = CORE_ERR[why]
@@ -191,6 +201,13 @@ function M.start(uz)
       else
         say("warning", tr("msg_unconfirmed"))
       end
+    elseif p.kind == "item" then
+      if ok then
+        say("ok", tr(p.count == 0 and "msg_item_removed" or "msg_item_applied", { name = p.name }))
+        S.sel = nil
+      else
+        say("warning", tr("msg_unconfirmed"))
+      end
     else
       if ok then say("ok", tr("msg_money_applied", { n = p.value })) else say("warning", tr("msg_unconfirmed")) end
     end
@@ -205,6 +222,16 @@ function M.start(uz)
     if p.kind == "pokemon" then
       local rec = current_record(p.target)
       ok = rec ~= nil and form_mod.matches(p.fields, rec)
+    elseif p.kind == "item" then
+      local b = call("bag")
+      local rows = type(b) == "table" and b[p.pouch] or nil
+      if rows then
+        local n, hit = 0, false
+        for _, r in ipairs(rows) do
+          if r.item == p.item then n = n + 1; if r.count == p.count then hit = true end end
+        end
+        ok = p.count == 0 and n < p.before or (p.count ~= 0 and hit)
+      end
     else
       local t = call("trainer")
       ok = type(t) == "table" and t.money == p.value
@@ -297,6 +324,98 @@ function M.start(uz)
     say("info", tr("msg_sent"))
   end
 
+  -- ---- bag ----
+
+  local function pouch_rows(pouch)
+    return type(bag) == "table" and type(bag[pouch]) == "table" and bag[pouch] or {}
+  end
+
+  local function item_label(rows_or_nil, id)
+    for _, r in ipairs(rows_or_nil or {}) do
+      if r.item == id and r.name and r.name ~= "" then return r.name end
+    end
+    for _, e in ipairs(names.item or {}) do
+      if e.id == id and e.name ~= "" then return e.name end
+    end
+    return "#" .. tostring(id)
+  end
+
+  -- Encodes one item change and writes all its ops in one step (removal shifts later slots, so several ops).
+  local function queue_item(pouch, item, count, slot)
+    local res, why = call("encode_item", pouch, item, count, slot)
+    if not res then say("danger", core_error(why)); return end
+    local ops = res.ops or { { addr = res.addr, bytes = res.bytes } }
+    local ok, text = write_ops(ops)
+    if not ok then say("danger", text); return end
+    local before = 0
+    for _, r in ipairs(pouch_rows(pouch)) do if r.item == item then before = before + 1 end end
+    S.pending = { kind = "item", pouch = pouch, item = item, count = count, before = before, tries = 0,
+      name = item_label(pouch_rows(pouch), item) }
+    say("info", tr("msg_sent"))
+  end
+
+  local function parse_count(text, pouch)
+    local n = form_mod.parse_int(text)
+    if n == nil or n < 1 or n > form_mod.pouch_max(core.limits, pouch) then return nil end
+    return n
+  end
+
+  for _, name in ipairs(form_mod.POUCHES) do
+    H["pouch_" .. name] = function()
+      S.pouch, S.sel, S.count_err, S.bag_filter, S.msg = name, nil, nil, "", nil
+      refresh_data()
+    end
+  end
+
+  function H.bag_filter(v) S.bag_filter = tostring(v or "") end
+
+  function H.bag_edit(v)
+    if type(v) ~= "table" then return end
+    local row
+    for _, r in ipairs(pouch_rows(S.pouch)) do if r.slot == v.slot then row = r end end
+    if not row then say("warning", tr("err_item_changed")); return end
+    S.sel = { pouch = S.pouch, slot = row.slot, item = row.item }
+    S.count, S.count_err, S.msg = tostring(row.count), nil, nil
+  end
+
+  function H.bag_close() S.sel, S.count_err = nil, nil end
+  function H.count_input(v) S.count, S.count_err = tostring(v or ""), nil end
+
+  function H.count_apply()
+    if S.pending or not S.sel then return end
+    local n = parse_count(S.count, S.sel.pouch)
+    if not n then S.count_err = "err_count"; return end
+    queue_item(S.sel.pouch, S.sel.item, n, S.sel.slot)
+  end
+
+  function H.item_remove()
+    if S.pending or not S.sel then return end
+    queue_item(S.sel.pouch, S.sel.item, 0, S.sel.slot)
+  end
+
+  function H.add_filter(v) S.add.filter, S.add.item = tostring(v or ""), nil end
+  function H.add_item(v) S.add.item = v end
+  function H.add_id(v) S.add.id, S.add.id_err = tostring(v or ""), nil end
+  function H.add_count(v) S.add.count, S.add.count_err = tostring(v or ""), nil end
+
+  function H.add_apply()
+    if S.pending then return end
+    local item
+    if names.item then
+      item = S.add.item
+      if item == nil then
+        local opts = form_mod.filter_options(names.item, S.add.filter, nil, 100, function(id) return "#" .. id end)
+        item = opts[1] and opts[1].value
+      end
+    else
+      item = form_mod.parse_int(S.add.id)
+    end
+    if item == nil or item < 1 or item > core.limits.item then S.add.id_err = "err_item"; return end
+    local n = parse_count(S.add.count, S.pouch)
+    if not n then S.add.count_err = "err_count"; return end
+    queue_item(S.pouch, item, n)
+  end
+
   local function on_action(action, value)
     local handler = H[action]
     if handler then
@@ -378,7 +497,35 @@ M.MOVE_SLOTS = 4
 
 -- Limits used when the core does not report any (older core): the Gen 6 values.
 M.DEFAULT_LIMITS = { species = 721, move = 617, item = 775, level = 100, iv = 31, ev = 255, ev_total = 510, nature = 24,
-  money = 999999 }
+  money = 999999, item_count = 999 }
+
+-- Bag pouches in display order (names as the core reports them).
+M.POUCHES = { "items", "medicine", "berries", "tms", "key_items" }
+
+--- Largest count a pouch takes: the core's per-pouch limit, else the general item count limit.
+function M.pouch_max(limits, pouch)
+  local p = type(limits.pouches) == "table" and limits.pouches[pouch] or nil
+  return (p and p.max_count) or limits.item_count or 999
+end
+
+--- Pouches to offer: the ones the core lists in edit_limits (display order), else all known.
+function M.pouches_of(limits)
+  if type(limits.pouches) ~= "table" or next(limits.pouches) == nil then return M.POUCHES end
+  local out = {}
+  for _, n in ipairs(M.POUCHES) do if limits.pouches[n] then out[#out + 1] = n end end
+  return #out > 0 and out or M.POUCHES
+end
+
+--- Rows of a pouch whose name contains the filter (case-insensitive); id as "#id" when the name is unknown.
+function M.filter_rows(rows, filter)
+  local f = (filter or ""):lower()
+  local out = {}
+  for _, r in ipairs(rows or {}) do
+    local label = (r.name and r.name ~= "") and r.name or ("#" .. tostring(r.item))
+    if f == "" or label:lower():find(f, 1, true) then out[#out + 1] = r end
+  end
+  return out
+end
 
 local function limits_of(limits)
   local out = {}
@@ -618,6 +765,82 @@ local function box_tab(ctx)
   return { type = "column", id = "box-col", gap = 8, children = kids }
 end
 
+local function filtered_select(ctx, id, list, current, filter, action, with_none)
+  local opts = form_mod.filter_options(list, filter, current, with_none and 99 or 100, label_of)
+  if with_none then
+    local has_zero = false
+    for _, o in ipairs(opts) do if o.value == 0 then has_zero = true end end
+    if not has_zero then table.insert(opts, 1, { value = 0, label = ctx.tr("none") }) end
+  end
+  for _, o in ipairs(opts) do if o.value == 0 and with_none then o.label = ctx.tr("none") end end
+  if #opts == 0 then opts[1] = { value = 0, label = ctx.tr("none") } end
+  return { type = "select", id = id, options = opts, selected = current ~= nil and current or opts[1].value, action = action }
+end
+
+local function pouch_section(ctx)
+  local st, tr = ctx.state, ctx.tr
+  local limits = ctx.core.limits
+  local chips = {}
+  for _, name in ipairs(form_mod.pouches_of(limits)) do
+    chips[#chips + 1] = { type = "chip", id = "pouch-" .. name, text = tr("pouch_" .. name), action = "pouch_" .. name,
+      selected = st.pouch == name }
+  end
+  local kids = { { type = "grid", id = "pouch-chips", columns = 3, gap = 4, children = chips } }
+  if type(ctx.bag) ~= "table" then
+    local key = ctx.bag_err == "unsupported" and "bag_unsupported" or "bag_not_ready"
+    kids[#kids + 1] = { type = "text", id = "bag-note", text = tr(key), style = "meta" }
+    return { type = "section", id = "items-sec", title = tr("items_title"), children = kids }
+  end
+  local rows_all = ctx.bag[st.pouch] or {}
+  local rows = {}
+  local shown = form_mod.filter_rows(rows_all, st.bag_filter)
+  for i, r in ipairs(shown) do
+    if i > M.MAX_ROWS then break end
+    rows[#rows + 1] = { id = "b" .. r.slot, title = (r.name and r.name ~= "") and r.name or label_of(r.item),
+      sub = tr("item_count_sub", { n = r.count }), action = "bag_edit", value = { slot = r.slot } }
+  end
+  kids[#kids + 1] = { type = "textfield", id = "bag-filter", action = "bag_filter", text = st.bag_filter, live = true,
+    placeholder = tr("filter_item") }
+  if #rows == 0 then
+    kids[#kids + 1] = { type = "text", id = "bag-empty", text = tr(#rows_all == 0 and "pouch_empty" or "pouch_no_match"), style = "meta" }
+  else
+    kids[#kids + 1] = { type = "list", id = "bag-list", rows = rows }
+    if #shown > #rows then
+      kids[#kids + 1] = { type = "text", id = "bag-more", text = tr("pouch_more", { n = #rows, total = #shown }), style = "meta" }
+    end
+  end
+  local max = form_mod.pouch_max(limits, st.pouch)
+  if st.sel and st.sel.pouch == st.pouch then
+    local name
+    for _, r in ipairs(rows_all) do if r.slot == st.sel.slot then name = r.name end end
+    kids[#kids + 1] = { type = "section", id = "sel-sec", title = (name and name ~= "") and name or label_of(st.sel.item), children = {
+      { type = "text", id = "count-l", text = tr("item_count_label", { max = max }), style = "meta" },
+      { type = "textfield", id = "count-input", action = "count_input", text = st.count or "", live = true,
+        error = st.count_err and tr(st.count_err, { max = max }) or nil },
+      { type = "row", id = "sel-acts", gap = 8, align = "center", children = {
+        { type = "button", id = "count-apply", label = tr("count_apply"), action = "count_apply", variant = "primary" },
+        { type = "button", id = "item-remove", label = tr("item_remove"), action = "item_remove", variant = "danger" },
+        { type = "button", id = "sel-close", label = tr("back"), action = "bag_close", variant = "quiet" },
+      } },
+    } }
+  end
+  local add = st.add
+  local add_kids = {}
+  if ctx.names.item then
+    add_kids[#add_kids + 1] = { type = "textfield", id = "add-filter", action = "add_filter", text = add.filter, live = true,
+      placeholder = tr("filter_item") }
+    add_kids[#add_kids + 1] = filtered_select(ctx, "add-item", ctx.names.item, add.item, add.filter, "add_item", false)
+  else
+    add_kids[#add_kids + 1] = { type = "textfield", id = "add-id", action = "add_id", text = add.id, live = true,
+      placeholder = tr("add_id_placeholder", { max = limits.item }), error = add.id_err and tr(add.id_err) or nil }
+  end
+  add_kids[#add_kids + 1] = { type = "textfield", id = "add-count", action = "add_count", text = add.count, live = true,
+    placeholder = tr("add_count_placeholder", { max = max }), error = add.count_err and tr(add.count_err, { max = max }) or nil }
+  add_kids[#add_kids + 1] = { type = "button", id = "add-apply", label = tr("add_apply"), action = "add_apply", variant = "primary" }
+  kids[#kids + 1] = { type = "section", id = "add-sec", title = tr("add_title"), children = add_kids }
+  return { type = "section", id = "items-sec", title = tr("items_title"), children = kids }
+end
+
 local function bag_tab(ctx)
   local st = ctx.state
   local limits = ctx.core.limits
@@ -630,7 +853,9 @@ local function bag_tab(ctx)
       { type = "button", id = "money-apply", label = ctx.tr("money_apply"), action = "money_apply", variant = "primary" },
     } },
   }
-  if not ctx.core.features.edit_items then
+  if ctx.bag_on then
+    kids[#kids + 1] = pouch_section(ctx)
+  else
     kids[#kids + 1] = { type = "section", id = "items-sec", title = ctx.tr("items_title"), children = {
       { type = "text", id = "items-note", text = ctx.tr("items_unsupported"), style = "meta" } } }
   end
@@ -652,17 +877,6 @@ local function list_view(ctx)
 end
 
 -- ---- edit form ----
-
-local function filtered_select(ctx, id, list, current, filter, action, with_none)
-  local opts = form_mod.filter_options(list, filter, current, with_none and 99 or 100, label_of)
-  if with_none then
-    local has_zero = false
-    for _, o in ipairs(opts) do if o.value == 0 then has_zero = true end end
-    if not has_zero then table.insert(opts, 1, { value = 0, label = ctx.tr("none") }) end
-  end
-  for _, o in ipairs(opts) do if o.value == 0 and with_none then o.label = ctx.tr("none") end end
-  return { type = "select", id = id, options = opts, selected = current, action = action }
-end
 
 local function stat_grid(ctx, kind, form, errs)
   local st_names = { hp = "stat_hp", atk = "stat_atk", def = "stat_def", spe = "stat_spe", spa = "stat_spa", spd = "stat_spd" }
