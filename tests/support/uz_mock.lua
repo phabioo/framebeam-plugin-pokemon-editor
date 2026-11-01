@@ -69,7 +69,7 @@ M.deep_copy = deep_copy
 function M.new(opts)
   opts = opts or {}
   local mock = { logs = {}, events = {}, writes = {}, providers = {}, calls = {}, write_policy = opts.write_policy }
-  local uz = { api = 1, plugin = { id = "uzume.creature-editor", version = "0.3.1" }, game = { language = opts.language } }
+  local uz = { api = 1, plugin = { id = "uzume.creature-editor", version = "0.3.2" }, game = { language = opts.language } }
   mock.uz = uz
 
   uz.log = {}

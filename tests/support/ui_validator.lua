@@ -77,7 +77,7 @@ local SPEC = {
       for _, r in ipairs(v) do if not table_row_ok(r) then return false end end
       return true
     end, _req = { "columns", "rows" } },
-  button = { label = text200, action = action, variant = enum("primary", "secondary", "quiet", "danger"), value = plain,
+  button = { label = text200, action = action, variant = enum("primary", "secondary", "quiet", "danger"), value = plain, disabled = bool,
              confirm = function(c)
                if type(c) ~= "table" or type(c.title) ~= "string" or type(c.text) ~= "string" then return false end
                for k in pairs(c) do

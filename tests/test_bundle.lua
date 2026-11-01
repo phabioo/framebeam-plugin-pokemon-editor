@@ -28,7 +28,7 @@ t.case("older app with only the global fb still starts", function()
   end
   local chunk = assert(loadfile("plugin/main.lua", "t", env))
   chunk()
-  t.eq(m.logs[1].text, "Kreatureneditor 0.3.1 geladen.")
+  t.eq(m.logs[1].text, "Kreatureneditor 0.3.2 geladen.")
   t.ok(m.ui.trees.panel)
 end)
 
@@ -43,7 +43,7 @@ t.case("bundled plugin runs in a sandbox and draws the panel", function()
   end
   local chunk = assert(loadfile("plugin/main.lua", "t", env))
   chunk()
-  t.eq(m.logs[1].text, "Kreatureneditor 0.3.1 geladen.")
+  t.eq(m.logs[1].text, "Kreatureneditor 0.3.2 geladen.")
   t.ok(m.ui.trees.panel)
   m.action("edit", { kind = "team", slot = 1 })
   m.action("level", "33")
@@ -66,7 +66,7 @@ end)
 t.case("manifest", function()
   local s = read("plugin/manifest.json")
   for _, needle in ipairs({
-    '"id": "uzume.creature-editor"', '"name": "Creature Editor"', '"version": "0.3.1"', '"api": 1', '"replaces": ["uzume.monster-editor"]',
+    '"id": "uzume.creature-editor"', '"name": "Creature Editor"', '"version": "0.3.2"', '"api": 1', '"replaces": ["uzume.monster-editor"]',
     '"uzume.soullink-core": ">=0.5.0"', '"000400000011C400"', '"000400000011C500"',
     '"permissions": [', '"memory.write"', '"entry": "main.lua"', '"min_player": "0.20.0"', '"title": "Editor"',
   }) do
