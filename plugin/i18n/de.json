@@ -100,6 +100,7 @@
   "add_title": "Item hinzufügen",
   "add_id_placeholder": "Item-Nummer (1 bis {max})",
   "add_count_placeholder": "Anzahl (1 bis {max})",
+  "item_choose": "Item wählen",
   "add_apply": "Item hinzufügen",
   "msg_item_applied": "{name} geändert.",
   "msg_item_removed": "{name} entfernt.",

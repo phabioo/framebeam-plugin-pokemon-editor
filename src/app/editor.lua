@@ -408,7 +408,8 @@ function M.start(uz)
   end
 
   function H.add_filter(v) S.add.filter, S.add.item = tostring(v or ""), nil end
-  function H.add_item(v) S.add.item = v end
+  -- 0 is the neutral "Choose an item" entry: nothing chosen
+  function H.add_item(v) S.add.item = (math.type(v) == "integer" and v >= 1) and v or nil end
   function H.add_id(v) S.add.id, S.add.id_err = tostring(v or ""), nil end
   function H.add_count(v) S.add.count, S.add.count_err = tostring(v or ""), nil end
 
@@ -417,10 +418,6 @@ function M.start(uz)
     local item
     if names.item then
       item = S.add.item
-      if item == nil then
-        local opts = form_mod.filter_options(names.item, S.add.filter, nil, 100, function(id) return "#" .. id end)
-        item = opts[1] and opts[1].value
-      end
     else
       item = form_mod.parse_int(S.add.id)
     end
@@ -430,7 +427,20 @@ function M.start(uz)
     queue_item(S.pouch, item, n)
   end
 
+  -- Older apps deliver integers as floats (2.0). Integral floats become integers, also inside action tables.
+  local function norm(v, depth)
+    if math.type(v) == "float" then return math.tointeger(v) or v end
+    if type(v) == "table" and (depth or 0) < 3 then
+      local out = {}
+      for k, x in pairs(v) do out[k] = norm(x, (depth or 0) + 1) end
+      return out
+    end
+    return v
+  end
+  self.norm = norm
+
   local function on_action(action, value)
+    value = norm(value)
     local handler = H[action]
     if handler then
       handler(value)

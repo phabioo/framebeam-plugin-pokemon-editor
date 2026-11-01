@@ -100,6 +100,7 @@
   "add_title": "Add an item",
   "add_id_placeholder": "Item number (1 to {max})",
   "add_count_placeholder": "Count (1 to {max})",
+  "item_choose": "Choose an item",
   "add_apply": "Add item",
   "msg_item_applied": "{name} updated.",
   "msg_item_removed": "{name} removed.",

@@ -98,6 +98,17 @@ local function filtered_select(ctx, id, list, current, filter, action, with_none
   return { type = "select", id = id, options = opts, selected = current ~= nil and current or opts[1].value, action = action }
 end
 
+-- Add-item picker: item 0 and unnamed or "???" items are left out; the neutral first entry (value 0) means "nothing chosen".
+local function item_picker(ctx, current, filter)
+  local list = {}
+  for _, e in ipairs(ctx.names.item or {}) do
+    if e.id ~= 0 and type(e.name) == "string" and e.name ~= "" and e.name ~= "???" then list[#list + 1] = e end
+  end
+  local opts = form_mod.filter_options(list, filter, current, 99, label_of)
+  table.insert(opts, 1, { value = 0, label = ctx.tr("item_choose") })
+  return { type = "select", id = "add-item", options = opts, selected = current or 0, action = "add_item" }
+end
+
 local function pouch_section(ctx)
   local st, tr = ctx.state, ctx.tr
   local limits = ctx.core.limits
@@ -106,7 +117,7 @@ local function pouch_section(ctx)
     chips[#chips + 1] = { type = "chip", id = "pouch-" .. name, text = tr("pouch_" .. name), action = "pouch_" .. name,
       selected = st.pouch == name }
   end
-  local kids = { { type = "grid", id = "pouch-chips", columns = 3, gap = 4, children = chips } }
+  local kids = { { type = "grid", id = "pouch-chips", columns = 2, gap = 4, children = chips } }
   if type(ctx.bag) ~= "table" then
     local key = ctx.bag_err == "unsupported" and "bag_unsupported" or "bag_not_ready"
     kids[#kids + 1] = { type = "text", id = "bag-note", text = tr(key), style = "meta" }
@@ -147,17 +158,27 @@ local function pouch_section(ctx)
   end
   local add = st.add
   local add_kids = {}
+  local count_ok = form_mod.parse_int(add.count) ~= nil and form_mod.parse_int(add.count) >= 1
+    and form_mod.parse_int(add.count) <= max
+  local item_ok
+  if ctx.names.item then
+    item_ok = add.item ~= nil
+  else
+    local id = form_mod.parse_int(add.id)
+    item_ok = id ~= nil and id >= 1 and id <= limits.item
+  end
   if ctx.names.item then
     add_kids[#add_kids + 1] = { type = "textfield", id = "add-filter", action = "add_filter", text = add.filter, live = true,
       placeholder = tr("filter_item") }
-    add_kids[#add_kids + 1] = filtered_select(ctx, "add-item", ctx.names.item, add.item, add.filter, "add_item", false)
+    add_kids[#add_kids + 1] = item_picker(ctx, add.item, add.filter)
   else
     add_kids[#add_kids + 1] = { type = "textfield", id = "add-id", action = "add_id", text = add.id, live = true,
       placeholder = tr("add_id_placeholder", { max = limits.item }), error = add.id_err and tr(add.id_err) or nil }
   end
   add_kids[#add_kids + 1] = { type = "textfield", id = "add-count", action = "add_count", text = add.count, live = true,
     placeholder = tr("add_count_placeholder", { max = max }), error = add.count_err and tr(add.count_err, { max = max }) or nil }
-  add_kids[#add_kids + 1] = { type = "button", id = "add-apply", label = tr("add_apply"), action = "add_apply", variant = "primary" }
+  add_kids[#add_kids + 1] = { type = "button", id = "add-apply", label = tr("add_apply"), action = "add_apply",
+    variant = st.sel and "secondary" or "primary", disabled = not (item_ok and count_ok) }
   kids[#kids + 1] = { type = "section", id = "add-sec", title = tr("add_title"), children = add_kids }
   return { type = "section", id = "items-sec", title = tr("items_title"), children = kids }
 end
@@ -171,7 +192,7 @@ local function bag_tab(ctx)
         text = ctx.trainer and ctx.trainer.money and ctx.tr("money_now", { n = ctx.trainer.money }) or ctx.tr("money_unknown") },
       { type = "textfield", id = "money-input", action = "money_input", text = st.money or "", live = true,
         placeholder = ctx.tr("money_placeholder", { max = limits.money }), error = st.money_err and ctx.tr(st.money_err) or nil },
-      { type = "button", id = "money-apply", label = ctx.tr("money_apply"), action = "money_apply", variant = "primary" },
+      { type = "button", id = "money-apply", label = ctx.tr("money_apply"), action = "money_apply", variant = "secondary" },
     } },
   }
   if ctx.bag_on then
